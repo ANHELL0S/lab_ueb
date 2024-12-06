@@ -10,3 +10,9 @@ redis:latest redis-server --requirepass lab_ueb_redis@
 ````bash
 auth lab_ueb_redis@```
 ````
+
+-- in container redis
+
+```bash
+docker exec -it redis-container redis-cli
+```
