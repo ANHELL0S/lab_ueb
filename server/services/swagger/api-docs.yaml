@@ -1,0 +1,393 @@
+openapi: 3.0.0
+info:
+  title: SPC API
+  description: API para gestionar usuarios, roles y otros recursos relacionados con el sistema SPC.
+  version: 1.0.0
+  contact:
+    name: Angelo G
+    email: angelogarcia2021@@gmail.com
+    url: https://wa.me/593982718318
+servers:
+- url: http://localhost:3000/api
+  description: API local
+paths:
+  # Ruta de Autenticación
+  /auth/signin:
+    post:
+      tags:
+      - Autenticación
+      summary: Iniciar sesión
+      description: |
+        Esta ruta permite a los usuarios iniciar sesión en el sistema proporcionando sus credenciales (correo electrónico y contraseña). Si las credenciales son válidas, se genera un **token JWT** que se utiliza para autenticar futuras solicitudes.
+
+        **Flujo de autenticación:**
+        1. El usuario envía sus credenciales de login **(correo electrónico y contraseña)**.
+        2. Si las credenciales son válidas, el servidor genera un token **JWT**.
+        3. El cliente recibe el JWT y lo almacena de forma segura (por ejemplo, en `localStorage` o `sessionStorage`).
+        4. El cliente utiliza el JWT en la cabecera `Authorization` de las siguientes solicitudes como método de autenticación.
+
+        **Códigos de estado:**
+        - **200**: Autenticación exitosa. El usuario recibe el token JWT.
+        - **401**: Credenciales incorrectas. El correo o la contraseña no son válidos.
+        - **403**: Acceso denegado. La cuenta puede estar deshabilitada o restringida.
+        - **500**: Error en el servidor. EL servidor al procesar la solicitud de inicio de sesión.
+      operationId: "signin"
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+              - email
+              - password
+              properties:
+                email:
+                  type: string
+                  description: Correo electrónico del usuario
+                  example: user@example.com
+                password:
+                  type: string
+                  description: Contraseña del usuario
+                  example: password123
+          application/json:
+            schema:
+              type: object
+              required:
+              - email
+              - password
+              properties:
+                email:
+                  type: string
+                  description: Correo electrónico del usuario
+                  example: user@example.com
+                password:
+                  type: string
+                  description: Contraseña del usuario
+                  example: password123
+      responses:
+        "200":
+          description: Inicio de sesión exitoso.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: Inicio de sesión exitoso.
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        type: object
+                        properties:
+                          id_user:
+                            type: string
+                            example: "8aebbb0a-0742-4498-bd24-67ca91f6dd7f"
+                          id_rol:
+                            type: string
+                            example: "5d268d73-d3e7-4df6-801c-1ed0616d181c"
+                      accessToken:
+                        type: string
+                        description: Token de acceso
+                        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXV...
+                  refreshToken:
+                    type: string
+                    description: Token de refresco
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        "401":
+          description: Credenciales inválidas.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  code:
+                    type: integer
+                    example: 401
+                  message:
+                    type: string
+                    example: Credenciales inválidas.
+                  data:
+                    type: object
+        "403":
+          description: Cuenta suspendida.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  code:
+                    type: integer
+                    example: 403
+                  message:
+                    type: string
+                    example: Tu cuenta está suspendida.
+                  data:
+                    type: object
+        "500":
+          description: Error interno del servidor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: ¡Ops! Ha ocurrido un error. Por favor, inténtalo de nuevo.
+                  data:
+                    type: object
+  /auth/logout:
+    post:
+      tags:
+      - Autenticación
+      summary: "Cerrar sesión"
+      description: |
+        Esta ruta permite a los usuarios cerrar sesión de manera segura. Al invocar esta ruta, el servidor invalidará el **token JWT** que el cliente ha estado utilizando para las solicitudes autenticadas. Esto efectivamente termina la sesión activa del usuario.
+
+        El cliente debe eliminar el **token JWT** de su almacenamiento local (por ejemplo, en `localStorage` o `sessionStorage`) para asegurarse de que no pueda ser reutilizado en futuras solicitudes.
+
+        **Proceso de cierre de sesión:**
+        1. El usuario envía una solicitud de cierre de sesión.
+        2. El servidor invalidará el token JWT asociado con la sesión.
+        3. El cliente elimina el token del almacenamiento local, asegurando que la sesión se cierre completamente.
+
+        **Códigos de estado:**
+        - **200**: Se cierra la sesión exitosamente. Se borra los `accesToken` y `refrestoken` alemacenados en el servidor.
+        - **401**: El usuario no está autenticado o el token JWT ha expirado, por lo que no puede cerrar sesión sin estar previamente autenticado.
+        - **500**: Error en el servidor al procesar la solicitud de cierre de sesión.
+      operationId: "logout"
+      responses:
+        "200":
+          description: Sesión cerrada exitosamente.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: Sesión cerrada exitosamente.
+        "401":
+          description: Autenticación requerida.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  code:
+                    type: integer
+                    example: 401
+                  message:
+                    type: string
+                    example: Autenticación requerida. Por favor inicia sesión.
+                  data:
+                    type: object
+        "500":
+          description: Error del servidor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: ¡Ops! Ha ocurrido un error. Por favor, inténtalo de nuevo.
+                  data:
+                    type: object
+  /auth/refresh-token:
+    post:
+      tags:
+      - Autenticación
+      summary: "Extender sesión"
+      description: |
+        Esta ruta permite a los usuarios extender su sesión activa generando un nuevo **token JWT** utilizando el `refreshToken` proporcionado en las cookies. Este mecanismo asegura que los usuarios puedan mantener su sesión sin interrupciones mientras interactúan con la aplicación.
+
+        **Funcionamiento del proceso:**
+        1. El cliente envía una solicitud para extender la sesión, asegurándose de incluir el `refreshToken` en las cookies.
+        2. El servidor valida el `refreshToken` y verifica su autenticidad.
+        3. Si el `refreshToken` es válido, el servidor genera un nuevo token JWT de acceso (`accessToken`) con un período de validez actualizado.
+        4. El nuevo `accessToken` se almacena como cookie y el `refreshToken` anterior se elimina para garantizar la seguridad.
+        5. El cliente debe utilizar el nuevo `accessToken` para futuras solicitudes autenticadas.
+
+        **Códigos de estado:**
+        - **200**: Sesión extendida exitosamente. El usuario recibe el token JWT.
+        - **401**: No se proporcionó un `refreshToken` o el token es inválido. El usuario debe autenticarse nuevamente.
+        - **404**: El usuario asociado al `refreshToken` no existe.
+        - **500**: Error interno del servidor al intentar procesar la solicitud.
+      operationId: "refresh-token"
+      responses:
+        "200":
+          description: Sesión extendida con éxito.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: Sesión extendida con éxito.
+                  data:
+                    type: object
+                    properties:
+                      accessToken:
+                        type: string
+                        example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        "401":
+          description: No hay token o es inválido.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  code:
+                    type: integer
+                    example: 401
+                  message:
+                    type: string
+                    example: No hay token, inicia sesión nuevamente.
+                  data:
+                    type: object
+        "404":
+          description: Usuario no encontrado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: Usuario no encontrado.
+                  data:
+                    type: object
+        "500":
+          description: Error interno del servidor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: ¡Ops! Ha ocurrido un error. Por favor, inténtalo de nuevo.
+                  data:
+                    type: object
+  # Ruta de usuarios
+  /users:
+    get:
+      summary: "Obtener todos los usuarios"
+      description: "Ruta para obtener una lista de todos los usuarios."
+      operationId: "getAllUsers"
+      tags:
+      - "Usuarios"
+      responses:
+        "200":
+          description: "Lista de usuarios obtenida exitosamente."
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                      example: 1
+                    email:
+                      type: string
+                      example: "usuario@dominio.com"
+                    role:
+                      type: string
+                      example: "admin"
+        "500":
+          description: "Error en el servidor."
+  /users/{id}:
+    get:
+      summary: "Obtener usuario por ID"
+      description: "Ruta para obtener un usuario específico por su ID."
+      operationId: "getUserById"
+      tags:
+      - "Usuarios"
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: "ID del usuario a consultar."
+        schema:
+          type: integer
+      responses:
+        "200":
+          description: "Usuario obtenido exitosamente."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  email:
+                    type: string
+                    example: "usuario@dominio.com"
+                  role:
+                    type: string
+                    example: "admin"
+        "404":
+          description: "Usuario no encontrado."
+        "500":
+          description: "Error en el servidor."
