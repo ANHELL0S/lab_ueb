@@ -6,10 +6,10 @@ import { requestReactiveController } from '../controllers/request_reactive.contr
 
 const router = Router()
 
-router.get('/', Auth, requestReactiveController.getAllRequestReactives)
-router.get('/:id', Auth, requestReactiveController.getReactiveById)
-router.post('/', Auth, requestReactiveController.createRequestReactive)
-router.put('/:id', Auth, requestReactiveController.updateReactive)
-router.delete('/:id', Auth, requestReactiveController.deleteReactive)
+router.get('/all', Auth, requestReactiveController.getAllRequestReactives)
+router.get('/get-by-id/:id', Auth, requestReactiveController.getRequestReactiveById)
+router.post('/create', Auth, requestReactiveController.createRequestReactive)
+router.put('/update/:id', Auth, requestReactiveController.updateRequestReactive)
+router.delete('/delete/:id', Auth, requestReactiveController.deleteRequestReactive)
 
 export default router

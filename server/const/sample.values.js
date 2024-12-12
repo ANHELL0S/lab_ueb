@@ -1,0 +1,8 @@
+const SAMPLE_LIQUID = 'liquid'
+const SAMPLE_SOLID = 'solid'
+const SAMPLE_GASEOUS = 'gaseous'
+const SAMPLE_THESIS = 'thesis'
+const SAMPLE_PROJECT = 'project'
+const SAMPLE_EXTERNAL = 'external'
+
+export { SAMPLE_LIQUID, SAMPLE_SOLID, SAMPLE_GASEOUS, SAMPLE_THESIS, SAMPLE_PROJECT, SAMPLE_EXTERNAL }

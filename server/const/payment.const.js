@@ -1,0 +1,6 @@
+const PAYMENT_PENDING = 'pending'
+const PAYMENT_APPROVED = 'approved'
+const PAYMENT_REJECTD = 'rejected'
+const PAYMENT_CANCELED = 'canceled'
+
+export { PAYMENT_PENDING, PAYMENT_APPROVED, PAYMENT_REJECTD, PAYMENT_CANCELED }

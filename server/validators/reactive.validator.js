@@ -1,4 +1,28 @@
 import { z } from 'zod'
+import {
+	CELSIUS,
+	CENTIGRAMOS,
+	CENTIMETROS_CUBICOS,
+	CUBIC_METERS,
+	DECAGRAMOS,
+	FAHRENHEIT,
+	GALONES,
+	GRAMOS,
+	KELVIN,
+	KILO_GRAMOS,
+	LIBRAS,
+	LITROS,
+	MICROGRAMOS,
+	MILI_GRAMOS,
+	MILI_LITROS,
+	MOLARIDAD,
+	NORMALIDAD,
+	ONZAS,
+	PINTAS,
+	PORCENTAJE,
+	TONELADAS,
+	UNIDADES,
+} from '../const/units_measurement.js'
 
 const reactive_zod = z.object({
 	name: z
@@ -15,15 +39,36 @@ const reactive_zod = z.object({
 		.min(1, 'Debe haber al menos un contenedor.')
 		.nonnegative('El número de contenedores no puede ser negativo.'),
 	initial_quantity: z.number().positive('La cantidad inicial debe ser mayor a 0.'),
-	current_quantity: z.number().nonnegative('La cantidad actual no puede ser negativa.'),
-	unit: z.enum(['g', 'mg', 'kg', 'l', 'ml', 'units'], {
-		errorMap: () => ({ message: 'La unidad debe ser una de las siguientes: g, mg, kg, l, ml, units.' }),
-	}),
+	unit: z.enum(
+		[
+			GRAMOS,
+			MILI_GRAMOS,
+			KILO_GRAMOS,
+			TONELADAS,
+			MICROGRAMOS,
+			CENTIGRAMOS,
+			DECAGRAMOS,
+			ONZAS,
+			LIBRAS,
+			LITROS,
+			MILI_LITROS,
+			GALONES,
+			CENTIMETROS_CUBICOS,
+			PINTAS,
+			CUBIC_METERS,
+			CELSIUS,
+			FAHRENHEIT,
+			KELVIN,
+			MOLARIDAD,
+			NORMALIDAD,
+			PORCENTAJE,
+			UNIDADES,
+		],
+		{
+			errorMap: () => ({ message: 'La unidad de consumo no es valida.' }),
+		}
+	),
 	cas: z.number().positive('La cantidad inicial debe ser mayor a 0.'),
-	entry_date: z
-		.string()
-		.datetime({ offset: true })
-		.refine(date => new Date(date).toString() !== 'Invalid Date', 'La fecha de entrada debe ser válida.'),
 	expiration_date: z
 		.string()
 		.datetime({ offset: true })
@@ -49,9 +94,35 @@ const consumption_reactive_zod = z.object({
 			required_error: 'La cantidad consumida es obligatoria',
 		})
 		.positive('La cantidad debe ser mayor a cero'),
-	unit: z.enum(['g', 'mg', 'kg', 'l', 'ml', 'units'], {
-		required_error: 'La unidad es obligatoria',
-	}),
+	unit: z.enum(
+		[
+			GRAMOS,
+			MILI_GRAMOS,
+			KILO_GRAMOS,
+			TONELADAS,
+			MICROGRAMOS,
+			CENTIGRAMOS,
+			DECAGRAMOS,
+			ONZAS,
+			LIBRAS,
+			LITROS,
+			MILI_LITROS,
+			GALONES,
+			CENTIMETROS_CUBICOS,
+			PINTAS,
+			CUBIC_METERS,
+			CELSIUS,
+			FAHRENHEIT,
+			KELVIN,
+			MOLARIDAD,
+			NORMALIDAD,
+			PORCENTAJE,
+			UNIDADES,
+		],
+		{
+			errorMap: () => ({ message: 'La unidad de consumo no es valida.' }),
+		}
+	),
 })
 
 const request_reactive_zod = z.object({
@@ -64,6 +135,11 @@ const request_reactive_zod = z.object({
 		.number({ required_error: 'La cantidad solicitada es requerida.' })
 		.int('La cantidad debe ser un número entero.')
 		.positive('La cantidad solicitada debe ser un número positivo.'),
+	status: z
+		.enum(['pending', 'approved', 'rejected'], {
+			errorMap: () => ({ message: 'El estado de la petición no es valido.' }),
+		})
+		.optional(),
 })
 
 export { reactive_zod, consumption_reactive_zod, request_reactive_zod }

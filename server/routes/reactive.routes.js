@@ -6,10 +6,11 @@ import { reactiveController } from '../controllers/reactive.controller.js'
 
 const router = Router()
 
-router.get('/', Auth, reactiveController.getAllReactives)
-router.get('/:id', Auth, reactiveController.getReactiveById)
-router.post('/', Auth, reactiveController.createReactive)
-router.put('/:id', Auth, reactiveController.updateReactive)
-router.delete('/:id', Auth, reactiveController.deleteReactive)
+router.get('/all', Auth, reactiveController.getAllReactives)
+router.get('/get-by-id/:id', Auth, reactiveController.getReactiveById)
+router.post('/create', Auth, reactiveController.createReactive)
+router.put('/update/:id', Auth, reactiveController.updateReactive)
+router.delete('/delete/:id', Auth, reactiveController.deleteReactive)
+router.get('/report/pdf', Auth, reactiveController.generatePdfReport)
 
 export default router

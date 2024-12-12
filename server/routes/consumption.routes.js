@@ -6,9 +6,10 @@ import { consumptionController } from '../controllers/consumption.controller.js'
 
 const router = Router()
 
-router.get('/', Auth, consumptionController.getAllConsumptions)
-router.get('/:id', Auth, consumptionController.getConsumptionsById)
-router.post('/', Auth, consumptionController.createConsumptionsReactive)
-router.delete('/', Auth, consumptionController.deleteConsumptionsReactive)
+router.get('/all', Auth, consumptionController.getAllConsumptions)
+router.get('/get-by-id/:id', Auth, consumptionController.getConsumptionsById)
+router.post('/create', Auth, consumptionController.createConsumptionsReactive)
+router.delete('/delete/:id', Auth, consumptionController.deleteConsumptionsReactive)
+router.get('/report/pdf', Auth, consumptionController.generatePdfReport)
 
 export default router

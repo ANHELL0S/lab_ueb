@@ -8,14 +8,14 @@ const reset_password_schema = z
 				required_error: 'La nueva contraseña es obligatoria.',
 			})
 			.min(8, 'La nueva contraseña debe tener al menos 8 caracteres.')
-			.max(20, 'La nueva contraseña no puede tener más de 20 caracteres.')
+			.max(16, 'La nueva contraseña no puede tener más de 16 caracteres.')
 			.refine(val => /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{8,}$/.test(val), {
 				message: 'La contraseña debe contener al menos una letra mayúscula, un número y un carácter especial.',
 			}),
 		confirmPassword: z
 			.string()
 			.min(8, 'La nueva contraseña debe tener al menos 8 caracteres.')
-			.max(20, 'La nueva contraseña no puede tener más de 20 caracteres.')
+			.max(16, 'La nueva contraseña no puede tener más de 16 caracteres.')
 			.refine(val => /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{8,}$/.test(val), {
 				message: 'La contraseña debe contener al menos una letra mayúscula, un número y un carácter especial.',
 			}),

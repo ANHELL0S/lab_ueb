@@ -6,10 +6,12 @@ import { accessLabController } from '../controllers/access_lab.controller.js'
 
 const router = Router()
 
-router.get('/', Auth, accessLabController.getAllAccessLabs)
-router.get('/:id', Auth, accessLabController.getAccessLabById)
-router.post('/', Auth, accessLabController.createAcessLab)
-router.put('/:id', Auth, accessLabController.updateAcessLab)
-router.delete('/:id', Auth, accessLabController.deleteAcessLab)
+router.get('/all', Auth, accessLabController.getAllAccessLabs)
+router.get('/get-by-id/:id', Auth, accessLabController.getAccessLabById)
+router.post('/create', Auth, accessLabController.createAcessLab)
+router.put('/update/:id', Auth, accessLabController.updateAcessLab)
+router.delete('/delete/:id', Auth, accessLabController.deleteAcessLab)
+router.get('/report/pdf', Auth, accessLabController.generatePdfReport)
+router.post('/change-permission', Auth, accessLabController.changePermissionAcessLab)
 
 export default router

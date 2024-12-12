@@ -175,12 +175,12 @@ const authController = {
 
 			await logEvent(
 				'info',
-				'Correo de restablecimiento de contraseña enviado',
+				'Enlace de recuperación enviado exitosamente.',
 				{ link: send_data, token: token },
 				user.id_user,
 				req
 			)
-			sendResponse(res, 200, 'Correo enviado exitosamente.', { link: send_data, token: token })
+			sendResponse(res, 200, 'Enlace de recuperación enviado exitosamente.', { link: send_data, token: token })
 		} catch (error) {
 			await logEvent(
 				'error',

@@ -1,6 +1,101 @@
 import { DataTypes } from 'sequelize'
 import { db_main } from '../config/db.config.js'
 import { DIRECTOR, SUPERVISOR, GENERAL_ADMIN, ACCESS_MANAGER, TECHNICAL_ANALYST } from '../const/roles.const.js'
+import {
+	CELSIUS,
+	CENTIGRAMOS,
+	CENTIMETROS_CUBICOS,
+	CUBIC_METERS,
+	DECAGRAMOS,
+	FAHRENHEIT,
+	GALONES,
+	GRAMOS,
+	KELVIN,
+	KILO_GRAMOS,
+	LIBRAS,
+	LITROS,
+	MICROGRAMOS,
+	MILI_GRAMOS,
+	MILI_LITROS,
+	MOLARIDAD,
+	NORMALIDAD,
+	ONZAS,
+	PINTAS,
+	PORCENTAJE,
+	TONELADAS,
+	UNIDADES,
+} from '../const/units_measurement.js'
+import { KARDEX_ADJUSTMENT, KARDEX_ENTRY, KARDEX_RETURN } from '../const/kardex.values.js'
+import {
+	SAMPLE_EXTERNAL,
+	SAMPLE_GASEOUS,
+	SAMPLE_LIQUID,
+	SAMPLE_PROJECT,
+	SAMPLE_SOLID,
+	SAMPLE_THESIS,
+} from '../const/sample.values.js'
+import { PAYMENT_APPROVED, PAYMENT_CANCELED, PAYMENT_PENDING, PAYMENT_REJECTD } from '../const/payment.const.js'
+import { ACCESS_APPROVED, ACCESS_PENDING, ACCESS_REJECTED } from '../const/access.values.js'
+
+/* ------------------------------- SYSTEM CONFIG -----------------------------*/
+
+export const system_config_Schema = db_main.define(
+	'system_config',
+	{
+		id_config: {
+			type: DataTypes.UUID,
+			defaultValue: DataTypes.UUIDV4,
+			primaryKey: true,
+		},
+		institution_name: {
+			type: DataTypes.STRING,
+			allowNull: false,
+		},
+		institution_logo: {
+			type: DataTypes.TEXT,
+			allowNull: true,
+		},
+		slogan: {
+			type: DataTypes.TEXT,
+			allowNull: true,
+		},
+		contact_email: {
+			type: DataTypes.STRING,
+			allowNull: true,
+			validate: {
+				isEmail: true,
+			},
+		},
+		contact_phone: {
+			type: DataTypes.STRING,
+			allowNull: true,
+		},
+		address: {
+			type: DataTypes.TEXT,
+			allowNull: true,
+		},
+		fb: {
+			type: DataTypes.STRING,
+			allowNull: true,
+		},
+		x: {
+			type: DataTypes.STRING,
+			allowNull: true,
+		},
+		ig: {
+			type: DataTypes.STRING,
+			allowNull: true,
+		},
+		yt: {
+			type: DataTypes.STRING,
+			allowNull: true,
+		},
+	},
+	{
+		timestamps: true,
+		tableName: 'system_config',
+	}
+)
 
 /* ------------------------------- ROLES -----------------------------*/
 
@@ -380,6 +475,76 @@ access_lab_Scheme.belongsTo(user_Schema, {
 	targetKey: 'id_user',
 })
 
+// Relación Muchos a Uno (n:1)
+// Varios accesos pueden estar asociados a un único laboratorio.
+access_lab_Scheme.belongsTo(laboratory_Schema, {
+	foreignKey: 'id_lab_fk',
+	targetKey: 'id_lab',
+})
+
+// Relación Uno a Muchos (1:n)
+// Un laboratorio puede tener varios accesos registrados.
+laboratory_Schema.hasMany(access_lab_Scheme, {
+	foreignKey: 'id_lab_fk',
+	sourceKey: 'id_lab',
+})
+
+/* ------------------------------- ACCESS LABS PAYMENT -----------------------------*/
+
+export const access_lab_payment_Scheme = db_main.define(
+	'access_lab_payments',
+	{
+		id_access_lab_payment: {
+			type: DataTypes.UUID,
+			defaultValue: DataTypes.UUIDV4,
+			primaryKey: true,
+		},
+		id_access_lab_fk: {
+			type: DataTypes.UUID,
+			allowNull: false,
+			references: {
+				model: 'access_labs',
+				key: 'id_access_lab',
+			},
+		},
+		amount_paid: {
+			type: DataTypes.DECIMAL(10, 2),
+			allowNull: false,
+		},
+		code_bill: {
+			type: DataTypes.STRING,
+			allowNull: false,
+		},
+		status: {
+			type: DataTypes.STRING,
+			allowNull: false,
+			type: DataTypes.ENUM(PAYMENT_PENDING, PAYMENT_APPROVED, PAYMENT_REJECTD, PAYMENT_CANCELED),
+			defaultValue: PAYMENT_PENDING,
+			validate: {
+				isIn: [[PAYMENT_PENDING, PAYMENT_APPROVED, PAYMENT_REJECTD, PAYMENT_CANCELED]],
+			},
+		},
+		payment_date: {
+			type: DataTypes.DATE,
+			allowNull: true,
+		},
+	},
+	{
+		timestamps: true,
+		tableName: 'access_lab_payments',
+	}
+)
+
+access_lab_payment_Scheme.belongsTo(access_lab_Scheme, {
+	foreignKey: 'id_access_lab_fk',
+	targetKey: 'id_access_lab',
+})
+
+access_lab_Scheme.hasMany(access_lab_payment_Scheme, {
+	foreignKey: 'id_access_lab_fk',
+	sourceKey: 'id_access_lab',
+})
+
 /* ------------------------------- ACCESS LABS STATUS -----------------------------*/
 
 export const access_lab_status_Schema = db_main.define(
@@ -401,9 +566,9 @@ export const access_lab_status_Schema = db_main.define(
 		status: {
 			type: DataTypes.STRING,
 			allowNull: false,
-			defaultValue: 'pending',
+			defaultValue: ACCESS_PENDING,
 			validate: {
-				isIn: [['pending', 'approved', 'rejected']],
+				isIn: [[ACCESS_PENDING, ACCESS_APPROVED, ACCESS_REJECTED]],
 			},
 		},
 	},
@@ -458,16 +623,35 @@ export const reactive_Schema = db_main.define(
 			allowNull: false,
 		},
 		unit: {
-			type: DataTypes.ENUM('g', 'mg', 'kg', 'l', 'ml', 'units'),
+			type: DataTypes.ENUM(
+				GRAMOS,
+				MILI_GRAMOS,
+				KILO_GRAMOS,
+				TONELADAS,
+				MICROGRAMOS,
+				CENTIGRAMOS,
+				DECAGRAMOS,
+				ONZAS,
+				LIBRAS,
+				LITROS,
+				MILI_LITROS,
+				GALONES,
+				CENTIMETROS_CUBICOS,
+				PINTAS,
+				CUBIC_METERS,
+				CELSIUS,
+				FAHRENHEIT,
+				KELVIN,
+				MOLARIDAD,
+				NORMALIDAD,
+				PORCENTAJE,
+				UNIDADES
+			),
 			allowNull: false,
 		},
 		cas: {
 			type: DataTypes.STRING,
 			allowNull: true,
-		},
-		entry_date: {
-			type: DataTypes.DATE,
-			allowNull: false,
 		},
 		expiration_date: {
 			type: DataTypes.DATE,
@@ -516,7 +700,30 @@ export const reactiveConsumption_Schema = db_main.define(
 			allowNull: false,
 		},
 		unit: {
-			type: DataTypes.ENUM('g', 'mg', 'kg', 'l', 'ml', 'units'),
+			type: DataTypes.ENUM(
+				GRAMOS,
+				MILI_GRAMOS,
+				KILO_GRAMOS,
+				TONELADAS,
+				MICROGRAMOS,
+				CENTIGRAMOS,
+				DECAGRAMOS,
+				ONZAS,
+				LIBRAS,
+				LITROS,
+				MILI_LITROS,
+				GALONES,
+				CENTIMETROS_CUBICOS,
+				PINTAS,
+				CUBIC_METERS,
+				CELSIUS,
+				FAHRENHEIT,
+				KELVIN,
+				MOLARIDAD,
+				NORMALIDAD,
+				PORCENTAJE,
+				UNIDADES
+			),
 			allowNull: false,
 		},
 	},
@@ -638,7 +845,7 @@ export const kardex_Schema = db_main.define(
 			},
 		},
 		action_type: {
-			type: DataTypes.ENUM('consumption', 'adjustment', 'entry', 'return'),
+			type: DataTypes.ENUM(KARDEX_ADJUSTMENT, KARDEX_ENTRY, KARDEX_RETURN),
 			allowNull: false,
 		},
 		id_responsible: {
@@ -654,17 +861,35 @@ export const kardex_Schema = db_main.define(
 			allowNull: false,
 		},
 		unit: {
-			type: DataTypes.ENUM('g', 'mg', 'kg', 'l', 'ml', 'units'),
+			type: DataTypes.ENUM(
+				GRAMOS,
+				MILI_GRAMOS,
+				KILO_GRAMOS,
+				TONELADAS,
+				MICROGRAMOS,
+				CENTIGRAMOS,
+				DECAGRAMOS,
+				ONZAS,
+				LIBRAS,
+				LITROS,
+				MILI_LITROS,
+				GALONES,
+				CENTIMETROS_CUBICOS,
+				PINTAS,
+				CUBIC_METERS,
+				CELSIUS,
+				FAHRENHEIT,
+				KELVIN,
+				MOLARIDAD,
+				NORMALIDAD,
+				PORCENTAJE,
+				UNIDADES
+			),
 			allowNull: false,
 		},
 		balance_after_action: {
 			type: DataTypes.FLOAT,
 			allowNull: false,
-		},
-		action_date: {
-			type: DataTypes.DATE,
-			allowNull: false,
-			defaultValue: DataTypes.NOW,
 		},
 		notes: {
 			type: DataTypes.STRING,
@@ -704,10 +929,7 @@ export const sample_Schema = db_main.define(
 		number: {
 			type: DataTypes.INTEGER,
 			allowNull: false,
-		},
-		date_received: {
-			type: DataTypes.DATE,
-			allowNull: false,
+			autoIncrement: true,
 		},
 		applicant_name: {
 			type: DataTypes.STRING,
@@ -737,24 +959,16 @@ export const sample_Schema = db_main.define(
 			type: DataTypes.STRING,
 			allowNull: false,
 		},
-		quantity: {
-			type: DataTypes.STRING,
-			allowNull: false,
-		},
 		container: {
 			type: DataTypes.STRING,
 			allowNull: false,
 		},
 		state: {
-			type: DataTypes.ENUM('líquido', 'sólido', 'gaseoso'),
-			allowNull: false,
-		},
-		required_analysis: {
-			type: DataTypes.STRING,
+			type: DataTypes.ENUM(SAMPLE_LIQUID, SAMPLE_SOLID, SAMPLE_GASEOUS),
 			allowNull: false,
 		},
 		type: {
-			type: DataTypes.ENUM('thesis', 'project', 'external'),
+			type: DataTypes.ENUM(SAMPLE_THESIS, SAMPLE_PROJECT, SAMPLE_EXTERNAL),
 			allowNull: false,
 		},
 		id_analyst_fk: {
@@ -788,85 +1002,6 @@ user_Schema.hasMany(sample_Schema, {
 sample_Schema.belongsTo(user_Schema, {
 	foreignKey: 'id_analyst_fk',
 	targetKey: 'id_user',
-})
-
-/* ------------------------------- SAMPLES QUOTATIONS -----------------------------*/
-
-export const sample_quotations_Schema = db_main.define(
-	'sample_quotations',
-	{
-		id_sample_quotation: {
-			type: DataTypes.UUID,
-			defaultValue: DataTypes.UUIDV4,
-			primaryKey: true,
-		},
-		request_date: {
-			type: DataTypes.DATE,
-			allowNull: false,
-			defaultValue: DataTypes.NOW,
-		},
-		applicant_identification_card: {
-			type: DataTypes.STRING,
-			allowNull: false,
-		},
-		id_access_manager_fk: {
-			type: DataTypes.UUID,
-			allowNull: false,
-			references: {
-				model: 'users',
-				key: 'id_user',
-			},
-		},
-		id_lab_fk: {
-			type: DataTypes.UUID,
-			allowNull: false,
-			references: {
-				model: 'laboratories',
-				key: 'id_lab',
-			},
-		},
-		status: {
-			type: DataTypes.ENUM('pending', 'approved', 'rejected'),
-			allowNull: false,
-			defaultValue: 'pending',
-		},
-		notes: {
-			type: DataTypes.STRING,
-			allowNull: true,
-		},
-	},
-	{
-		timestamps: true,
-		tableName: 'sample_quotations',
-	}
-)
-
-// Relación Uno a Muchos (1:n)
-// Una adminstrador de acceso puede registrar peticiones de accesos accesos
-user_Schema.hasMany(sample_quotations_Schema, {
-	foreignKey: 'id_approver_fk',
-	sourceKey: 'id_user',
-})
-
-// Relación Uno a Muchos (n:1)
-// Una adminstrador de acceso puede registrar peticiones de accesos accesos
-sample_quotations_Schema.belongsTo(user_Schema, {
-	foreignKey: 'id_approver_fk',
-	targetKey: 'id_user',
-})
-
-// Relación Uno a Muchos (1:n)
-// Un laboratorio puede recivir varias peticiones
-laboratory_Schema.hasMany(sample_quotations_Schema, {
-	foreignKey: 'id_lab_fk',
-	sourceKey: 'id_lab',
-})
-
-// Relación Muchos a Uno (n:1)
-// Vasias peticiones puede recivir un laboratorio
-sample_quotations_Schema.belongsTo(laboratory_Schema, {
-	foreignKey: 'id_lab_fk',
-	targetKey: 'id_lab',
 })
 
 /* ------------------------------- SAMPLE REPORT -----------------------------*/
@@ -944,51 +1079,6 @@ report_Schema.belongsTo(user_Schema, {
 user_Schema.hasMany(report_Schema, {
 	foreignKey: 'id_analyst_fk',
 	sourceKey: 'id_user',
-})
-
-/* ------------------------------- QUOTATIONS -----------------------------*/
-
-export const quotation_Schema = db_main.define(
-	'quotations',
-	{
-		id_quotation: {
-			type: DataTypes.UUID,
-			defaultValue: DataTypes.UUIDV4,
-			primaryKey: true,
-		},
-		id_request_reactive_fk: {
-			type: DataTypes.UUID,
-			allowNull: false,
-			references: {
-				model: 'requests_reactives',
-				key: 'id_request_reactive',
-			},
-		},
-		status: {
-			type: DataTypes.STRING,
-			allowNull: false,
-			defaultValue: 'pending',
-			validate: {
-				isIn: [['pending', 'accepted', 'rejected']],
-			},
-		},
-		issue_date: {
-			type: DataTypes.DATE,
-			allowNull: false,
-			defaultValue: DataTypes.NOW,
-		},
-	},
-	{
-		timestamps: true,
-		tableName: 'quotations',
-	}
-)
-
-// Relación Muchos a Uno (n:1)
-// Varias cotizaciones son aprobadas por un director
-quotation_Schema.belongsTo(request_reactive_Schema, {
-	foreignKey: 'id_request_reactive_fk',
-	targetKey: 'id_request_reactive',
 })
 
 /* ------------------------------- LOGS -----------------------------*/

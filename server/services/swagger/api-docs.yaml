@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
-  title: SPC API
-  description: API para gestionar usuarios, roles y otros recursos relacionados con el sistema SPC.
+  title: SGL API
+  description: API para el Sistema de Gestión de Laboratorios (SGL). Este sistema está diseñado para facilitar la gestión de equipos, usuarios, reservas, y mantenimiento de laboratorios.
   version: 1.0.0
   contact:
     name: Angelo G
@@ -11,7 +11,7 @@ servers:
 - url: http://localhost:3000/api
   description: API local
 paths:
-  # Ruta de Autenticación
+  # AUTHENTICATION
   /auth/signin:
     post:
       tags:
@@ -327,49 +327,466 @@ paths:
                     example: ¡Ops! Ha ocurrido un error. Por favor, inténtalo de nuevo.
                   data:
                     type: object
-  # Ruta de usuarios
-  /users:
-    get:
-      summary: "Obtener todos los usuarios"
-      description: "Ruta para obtener una lista de todos los usuarios."
-      operationId: "getAllUsers"
+  /auth/request-password-reset:
+    post:
       tags:
-      - "Usuarios"
+      - Autenticación
+      summary: "Recuperar cuenta"
+      description: |
+        Esta ruta permite a los usuarios recuperar el acceso a su cuenta proporcionando su **electrónico registrado**. El sistema enviará un enlace de recuperación a dicho correo, permitiendo restablecer su contraseña de manera segura.
+
+        **Nota:** Si haces mas de **3 solicitudes** en menos de **1 minuto** tus peticiones quedaran bloqueadas temporalmente.
+
+        **Funcionamiento del proceso:**
+        1. El cliente envía una solicitud con su dirección de correo electrónico registrada.
+        2. El servidor valida el correo y verifica si corresponde a un usuario existente.
+        3. Si el correo es válido, se genera un enlace único de recuperación que se envía al correo proporcionado.
+        4. El usuario debe hacer clic en el enlace para acceder a una página de restablecimiento de contraseña.
+        5. El enlace de recuperación tiene un tiempo de validez limitado para garantizar la seguridad.
+
+        **Códigos de estado:**
+        - **200**: El enlace de recuperación se envió exitosamente al correo proporcionado.
+        - **400**: Solicitud inválida, el correo no cumple con el formato esperado.
+        - **404**: El correo proporcionado no está asociado a ninguna cuenta.
+        - **500**: Error interno del servidor al intentar procesar la solicitud.
+      operationId: "request-password-reset"
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+              - email
+              - password
+              properties:
+                email:
+                  type: string
+                  description: Correo electrónico del usuario
+                  example: user@example.com
+          application/json:
+            schema:
+              type: object
+              required:
+              - email
+              properties:
+                email:
+                  type: string
+                  description: Correo electrónico del usuario
+                  example: user@example.com
       responses:
         "200":
-          description: "Lista de usuarios obtenida exitosamente."
+          description: Enlace de recuperación enviado exitosamente.
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    id:
-                      type: integer
-                      example: 1
-                    email:
-                      type: string
-                      example: "usuario@dominio.com"
-                    role:
-                      type: string
-                      example: "admin"
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: Enlace de recuperación enviado exitosamente.
+                  data:
+                    type: object
+                    properties:
+                      accessToken:
+                        type: string
+                        example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        "401":
+          description: Por favor, ingresa tu email actual.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  code:
+                    type: integer
+                    example: 401
+                  message:
+                    type: string
+                    example: Por favor, ingresa tu email actual.
+                  data:
+                    type: object
+        "404":
+          description: Email no encontrado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: Email no encontrado.
+                  data:
+                    type: object
         "500":
-          description: "Error en el servidor."
-  /users/{id}:
+          description: Error interno del servidor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: ¡Ops! Ha ocurrido un error. Por favor, inténtalo de nuevo.
+                  data:
+                    type: object
+  /auth/reset-password/{id}:
+    post:
+      tags:
+      - Autenticación
+      summary: "Restablecer contraseña"
+      description: |
+        Esta ruta permite a los usuarios restablecer la contraseña de su cuenta proporcionando un **token de recuperación** y una nueva contraseña que cumpla con los requisitos de seguridad.
+
+         **Requisitos para la nueva contraseña:**
+         - Longitud mínima de **8 caracteres** y máxima de **16 caracteres**.
+         - Debe incluir al menos:
+           - Una letra **mayúscula**.
+           - Un **número**.
+           - Un **carácter especial** (por ejemplo: @, #, !, $).
+
+         **Funcionamiento del proceso:**
+         1. El cliente envía una solicitud con el token de recuperación, el nuevo password y la confirmación del password.
+         2. El servidor valida el token y verifica si corresponde a un usuario existente.
+         3. Si la validación es exitosa, se actualiza la contraseña del usuario.
+
+         **Códigos de estado:**
+         - **200**: Contraseña restablecida correctamente.
+         - **400**: Datos inválidos (por ejemplo, contraseñas no coinciden o formato incorrecto).
+         - **401**: Token de recuperación expirado.
+         - **403**: Usuario no autorizado para realizar esta acción.
+         - **404**: Usuario no encontrado.
+         - **500**: Error interno del servidor.
+      operationId: "reset-password/{id}"
+      parameters:
+      - name: UUID
+        in: path
+        required: true
+        description: UUID del usuario.
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - token
+              - newPassword
+              - confirmPassword
+              properties:
+                token:
+                  type: string
+                  description: Token único para restablecer la contraseña.
+                  example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                newPassword:
+                  type: string
+                  description: La nueva contraseña del usuario.
+                  example: "Nuev@123"
+                confirmPassword:
+                  type: string
+                  description: Confirmación de la nueva contraseña.
+                  example: "Nuev@123"
+      responses:
+        "200":
+          description: Contraseña restablecida correctamente.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: Contraseña restablecida correctamente.
+        "400":
+          description: Datos inválidos o contraseñas no coinciden.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  code:
+                    type: integer
+                    example: 400
+                  message:
+                    type: string
+                    example: Las contraseñas no coinciden o formato incorrecto.
+        "401":
+          description: Token de recuperación expirado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  code:
+                    type: integer
+                    example: 401
+                  message:
+                    type: string
+                    example: El token ha expirado.
+        "403":
+          description: Usuario no autorizado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  code:
+                    type: integer
+                    example: 403
+                  message:
+                    type: string
+                    example: No autorizado para realizar esta acción.
+        "404":
+          description: Usuario no encontrado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: Usuario no encontrado.
+        "500":
+          description: Error interno del servidor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: ¡Ops! Ha ocurrido un error. Por favor, inténtalo de nuevo.
+  #  USER
+  /user/all:
+    get:
+      summary: "Obtener todos los usuarios"
+      description: |
+        Esta ruta permite obtener una lista de todos los usuarios del sistema. 
+        Se pueden aplicar filtros opcionales como nombre completo (`full_name`) y cédula de identificación (`identification_card`).
+        Los resultados están paginados.
+
+        **Parámetros de consulta:**
+        - `page`: Número de página (por defecto: 1).
+        - `limit`: Número de usuarios por página (por defecto: 10).
+        - `full_name`: Filtro por nombre completo (opcional).
+        - `identification_card`: Filtro por cédula de identificación (opcional).
+      operationId: "getAllUsers"
+      tags:
+      - "Usuarios"
+      parameters:
+      - name: page
+        in: query
+        description: "Número de página (por defecto: 1)"
+        required: false
+        schema:
+          type: integer
+          example: 1
+      - name: limit
+        in: query
+        description: "Número de registros por página (por defecto: 10)"
+        required: false
+        schema:
+          type: integer
+          example: 10
+      - name: full_name
+        in: query
+        description: "Filtro opcional por nombre completo"
+        required: false
+        schema:
+          type: string
+          example: "Juan Pérez"
+      - name: identification_card
+        in: query
+        description: "Filtro opcional por cédula de identificación"
+        required: false
+        schema:
+          type: string
+          example: "123456789"
+      responses:
+        "200":
+          description: "Usuarios obtenidos exitosamente."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: "Usuarios obtenidos exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        type: object
+                        properties:
+                          id_user:
+                            type: string
+                            example: "uuid"
+                          active:
+                            type: boolean
+                            example: true
+                          full_name:
+                            type: string
+                            example: "string"
+                          email:
+                            type: string
+                            example: "string"
+                          phone:
+                            type: string
+                            example: "string"
+                          identification_card:
+                            type: string
+                            example: "string"
+                          code:
+                            type: string
+                            example: "string"
+                          createdAt:
+                            type: string
+                            format: date-time
+                            example: "date ISO"
+                          updatedAt:
+                            type: string
+                            format: date-time
+                            example: "date ISO"
+                          user_roles_intermediate:
+                            type: object
+                            properties:
+                              id_user_role_intermediate:
+                                type: string
+                                example: "uuid"
+                              id_user_fk:
+                                type: string
+                                example: "uuid"
+                              user_roles:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    id_user_roles:
+                                      type: string
+                                      example: "uuid"
+                                    id_rol_fk:
+                                      type: string
+                                      example: "uuid"
+                                    role:
+                                      type: object
+                                      properties:
+                                        id_rol:
+                                          type: string
+                                          example: "uuid"
+                                        type_rol:
+                                          type: string
+                                          example: "string"
+        "404":
+          description: Usuarios no encontrados.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: Usuarios no encontrados.
+        "500":
+          description: Error interno del servidor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: ¡Ops! Ha ocurrido un error. Por favor, inténtalo de nuevo.
+  /user/get-by-id/{id}:
     get:
       summary: "Obtener usuario por ID"
-      description: "Ruta para obtener un usuario específico por su ID."
+      description: |
+        Esta ruta permite obtener los detalles de un usuario específico mediante su identificador único (ID).
+
+        **Funcionamiento:**
+        - El cliente envía el ID del usuario como parámetro en la URL.
+        - El servidor verifica si el usuario existe y devuelve sus datos.
+        - Los resultados se almacenan temporalmente en caché para optimizar las siguientes solicitudes.
+
       operationId: "getUserById"
       tags:
       - "Usuarios"
       parameters:
-      - name: id
+      - name: UUID
         in: path
+        description: "UUID del usuario"
         required: true
-        description: "ID del usuario a consultar."
         schema:
           type: integer
+          example: 1
       responses:
         "200":
           description: "Usuario obtenido exitosamente."
@@ -378,16 +795,4827 @@ paths:
               schema:
                 type: object
                 properties:
+                  status:
+                    type: string
+                    example: "success"
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: "Usuario obtenido exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        type: object
+                        properties:
+                          id_user:
+                            type: string
+                            example: "2e5a412d-bcd0-4484-acd0-dda02492d2c6"
+                          active:
+                            type: boolean
+                            example: true
+                          full_name:
+                            type: string
+                            example: "Administrador Acceso"
+                          email:
+                            type: string
+                            example: "acceso@gmail.com"
+                          phone:
+                            type: string
+                            example: "0000000009"
+                          identification_card:
+                            type: string
+                            example: "0000000009"
+                          code:
+                            type: string
+                            example: "AA"
+                          createdAt:
+                            type: string
+                            format: date-time
+                            example: "2024-12-10T11:02:23.426Z"
+                          updatedAt:
+                            type: string
+                            format: date-time
+                            example: "2024-12-10T11:02:23.426Z"
+                          user_roles_intermediate:
+                            type: object
+                            properties:
+                              id_user_role_intermediate:
+                                type: string
+                                example: "cd05c88c-becc-45c3-8747-31cb5472d285"
+                              id_user_fk:
+                                type: string
+                                example: "2e5a412d-bcd0-4484-acd0-dda02492d2c6"
+                              user_roles:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    id_user_roles:
+                                      type: string
+                                      example: "a4bac6a0-e419-4754-8342-52ca701b1339"
+                                    id_rol_fk:
+                                      type: string
+                                      example: "ac5c8ace-0b24-4242-a5d4-d05acacd55d7"
+                                    role:
+                                      type: object
+                                      properties:
+                                        id_rol:
+                                          type: string
+                                          example: "ac5c8ace-0b24-4242-a5d4-d05acacd55d7"
+                                        type_rol:
+                                          type: string
+                                          example: "access_manager"
+        "404":
+          description: Usuarios no encontrados.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: Usuarios no encontrados.
+        "500":
+          description: Error interno del servidor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: ¡Ops! Ha ocurrido un error. Por favor, inténtalo de nuevo.
+  /user/create:
+    post:
+      summary: "Crear nuevo usuario"
+      description: |
+        Esta ruta permite crear un nuevo usuario en el sistema.
+
+        **Funcionamiento:**
+        1. Se verifica si los campos obligatorios están presentes y son válidos.
+        2. Se valida que no existan duplicados para campos únicos como correo electrónico, teléfono y número de cédula.
+        3. Se crea un nuevo usuario y se genera un hash para la contraseña.
+        4. Un correo de confirmación se envía tras la creación del usuario.
+
+        **Códigos de estado:**
+        - **201**: Usuario creado exitosamente.
+        - **400**: Los datos enviados no son válidos o faltan campos obligatorios.
+        - **409**: Ya existe un usuario con el mismo correo, teléfono o número de cédula.
+        - **500**: Error en el servidor al procesar la solicitud.
+      operationId: "createUser"
+      tags:
+      - "Usuarios"
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                full_name:
+                  type: string
+                  example: "Juan Pérez"
+                email:
+                  type: string
+                  example: "juanperez@gmail.com"
+                phone:
+                  type: string
+                  example: "1234567890"
+                identification_card:
+                  type: string
+                  example: "V-12345678"
+          application/json:
+            schema:
+              type: object
+              properties:
+                full_name:
+                  type: string
+                  example: "Juan Pérez"
+                email:
+                  type: string
+                  example: "juanperez@gmail.com"
+                phone:
+                  type: string
+                  example: "1234567890"
+                identification_card:
+                  type: string
+                  example: "V-12345678"
+      responses:
+        "201":
+          description: "Usuario creado exitosamente."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  code:
+                    type: integer
+                    example: 201
+                  message:
+                    type: string
+                    example: "Usuario creado exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      id_user:
+                        type: string
+                        example: uuid"
+                      full_name:
+                        type: string
+                        example: "string"
+                      email:
+                        type: string
+                        example: "string"
+                      phone:
+                        type: string
+                        example: "string"
+                      identification_card:
+                        type: string
+                        example: "string"
+                      createdAt:
+                        type: string
+                        format: date-time
+                        example: "date ISO"
+                      updatedAt:
+                        type: string
+                        format: date-time
+                        example: "date ISO"
+        "400":
+          description: "Solicitud incorrecta, datos faltantes o inválidos."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 400
+                  message:
+                    type: string
+                    example: "Ya existe un usuario con este correo."
+        "404":
+          description: "No se encontraron registros de usuario."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "Usuarios no encontrados."
+        "500":
+          description: "Error interno del servidor."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "¡Ops! Ha ocurrido un error. Por favor, inténtalo de nuevo."
+  /user/update-info/{id }:
+    put:
+      summary: "Actualizar un usuario"
+      description: |
+        Esta ruta permite actualizar la información de un usuario existente en el sistema. El usuario debe proporcionar los datos que desea actualizar (como nombre, correo electrónico, teléfono, etc.). La actualización solo se realiza si el usuario existe y los nuevos valores no son duplicados (como un correo electrónico o teléfono que ya esté asociado a otro usuario).
+
+        **Flujo de actualización:**
+        1. El cliente envía los datos que desea actualizar (por ejemplo, correo electrónico, nombre, etc.).
+        2. El servidor valida que el usuario exista en el sistema.
+        3. Se verifican los campos únicos (correo electrónico, teléfono, etc.) para asegurarse de que no haya duplicados.
+        4. Si la validación es exitosa, el servidor actualiza los datos del usuario en la base de datos.
+        5. El servidor devuelve una respuesta de éxito con los datos actualizados.
+
+        **Códigos de estado:**
+        - **200**: Actualización exitosa. Los datos del usuario han sido actualizados.
+        - **400**: La validación de los datos falló. Un campo contiene un valor inválido o ya existe en otro usuario.
+        - **404**: El usuario o el rol especificado no fue encontrado.
+        - **500**: Error en el servidor. El servidor ha encontrado un problema al procesar la solicitud de actualización.
+      operationId: "updateUser"
+      tags:
+      - "Usuarios"
+      parameters:
+      - name: "UUID"
+        in: "path"
+        required: true
+        description: "UUID del usuario que se desea actualizar"
+        schema:
+          type: string
+          example: "2e5a412d-bcd0-4484-acd0-dda02492d2c6"
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                full_name:
+                  type: string
+                  example: "Angelo García"
+                email:
+                  type: string
+                  example: "dddd@gmail.com"
+                phone:
+                  type: string
+                  example: "1111111110"
+                identification_card:
+                  type: string
+                  example: "1708232754"
+                active:
+                  type: boolean
+                  example: true
+                code:
+                  type: string
+                  example: "ADGA"
+          application/json:
+            schema:
+              type: object
+              properties:
+                full_name:
+                  type: string
+                  example: "Angelo G cambio A"
+                email:
+                  type: string
+                  example: "dddd@gmail.com"
+                phone:
+                  type: string
+                  example: "1111111110"
+                identification_card:
+                  type: string
+                  example: "1708232754"
+                active:
+                  type: boolean
+                  example: true
+                code:
+                  type: string
+                  example: "Aaa"
+      responses:
+        "200":
+          description: "Usuario actualizado exitosamente."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: "Usuario actualizado exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      id_user:
+                        type: string
+                        example: "2e5a412d-bcd0-4484-acd0-dda02492d2c6"
+                      full_name:
+                        type: string
+                        example: "Angelo G cambio A"
+                      email:
+                        type: string
+                        example: "dddd@gmail.com"
+                      phone:
+                        type: string
+                        example: "1111111110"
+                      identification_card:
+                        type: string
+                        example: "1708232754"
+                      active:
+                        type: boolean
+                        example: true
+                      code:
+                        type: string
+                        example: "Aaa"
+                      createdAt:
+                        type: string
+                        format: date-time
+                        example: "2024-12-10T11:02:23.426Z"
+                      updatedAt:
+                        type: string
+                        format: date-time
+                        example: "2024-12-10T11:02:23.426Z"
+        "400":
+          description: "Solicitud incorrecta, datos faltantes o inválidos."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 400
+                  message:
+                    type: string
+                    example: "Ya existe un usuario con este correo."
+        "404":
+          description: "Usuario o rol no encontrado."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "Usuario no encontrado."
+        "500":
+          description: "Error interno del servidor."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "¡Ops! Ha ocurrido un error. Por favor, inténtalo de nuevo."
+  /user/update-password:
+    put:
+      summary: "Actualizar la contraseña del usuario"
+      description: |
+        Esta ruta permite actualizar la contraseña de un usuario en el sistema. El usuario debe proporcionar su contraseña actual, la nueva contraseña y su confirmación. Si la contraseña actual es correcta y la nueva contraseña y confirmación coinciden, la contraseña será actualizada.
+
+        **Flujo de actualización de contraseña:**
+        1. El cliente envía la contraseña actual, la nueva contraseña y su confirmación.
+        2. El servidor valida que la contraseña actual coincida con la almacenada en la base de datos.
+        3. Se valida que la nueva contraseña y la confirmación coincidan.
+        4. Si las validaciones son exitosas, el servidor genera un nuevo hash para la nueva contraseña.
+        5. El servidor actualiza la contraseña en la base de datos.
+        6. El servidor devuelve una respuesta de éxito indicando que la contraseña ha sido actualizada.
+
+        **Códigos de estado:**
+        - **200**: Contraseña actualizada exitosamente.
+        - **400**: La nueva contraseña no coincide con la confirmación.
+        - **401**: La contraseña actual es incorrecta.
+        - **500**: Error en el servidor al procesar la solicitud de actualización de la contraseña.
+      operationId: "updatePassword"
+      tags:
+      - "Usuarios"
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                currentPassword:
+                  type: string
+                  example: "password123"
+                newPassword:
+                  type: string
+                  example: "newPassword456"
+                confirmPassword:
+                  type: string
+                  example: "newPassword456"
+          application/json:
+            schema:
+              type: object
+              properties:
+                currentPassword:
+                  type: string
+                  example: "password123"
+                newPassword:
+                  type: string
+                  example: "newPassword456"
+                confirmPassword:
+                  type: string
+                  example: "newPassword456"
+      responses:
+        "200":
+          description: "Contraseña actualizada exitosamente."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: "Contraseña actualizada exitosamente."
+        "400":
+          description: "La nueva contraseña no coincide con la confirmación."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 400
+                  message:
+                    type: string
+                    example: "La nueva contraseña no coincide con la confirmación."
+        "401":
+          description: "Contraseña actual inválida."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 401
+                  message:
+                    type: string
+                    example: "Contraseña actual inválida."
+        "500":
+          description: "Error interno del servidor al procesar la solicitud de actualización de contraseña."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "¡Ops! Ha ocurrido un error al actualizar la contraseña. Por favor, inténtalo de nuevo."
+  /user/delete/{ id}:
+    delete:
+      summary: "Eliminar un usuario"
+      description: |
+        Esta ruta permite eliminar un usuario del sistema. El usuario es identificado por su `id` y debe cumplir ciertas validaciones antes de ser eliminado. Si el usuario está asociado a un laboratorio, la eliminación no podrá realizarse.
+
+        **Flujo de eliminación:**
+        1. Se recibe la solicitud con el `id` del usuario a eliminar.
+        2. Se valida que el usuario exista en la base de datos.
+        3. Se verifica si el usuario está asociado a algún laboratorio.
+        4. Si el usuario está asociado a un laboratorio, la eliminación no es posible.
+        5. Si todas las validaciones son exitosas, el usuario es eliminado.
+        6. El servidor devuelve una respuesta indicando si la operación fue exitosa o si hubo un error.
+
+        **Códigos de estado:**
+        - **200**: Usuario eliminado exitosamente.
+        - **400**: El usuario está asociado a un laboratorio y no puede ser eliminado.
+        - **404**: Usuario no encontrado.
+        - **500**: Error interno del servidor al intentar eliminar el usuario.
+      operationId: "deleteUser"
+      tags:
+      - "Usuarios"
+      parameters:
+      - name: "UUID"
+        in: "path"
+        required: true
+        description: "UUID del usuario a eliminar"
+        schema:
+          type: string
+          example: "2e5a412d-bcd0-4484-acd0-dda02492d2c6"
+      responses:
+        "200":
+          description: "Usuario eliminado exitosamente."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: "Usuario eliminado exitosamente."
+        "400":
+          description: "El usuario está asociado a un laboratorio y no puede ser eliminado."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 400
+                  message:
+                    type: string
+                    example: "El usuario está a cargo de un laboratorio."
+        "404":
+          description: "Usuario no encontrado."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "Usuario no encontrado."
+        "500":
+          description: "Error interno del servidor al intentar eliminar el usuario."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "Error al eliminar el usuario."
+  # ROLE
+  /role/all:
+    get:
+      summary: "Obtener todos los roles"
+      description: |
+        Esta ruta permite obtener todos los roles del sistema con soporte de paginación. Si los roles han sido previamente consultados, se recuperan desde la caché para mejorar el rendimiento.
+
+        **Flujo de obtención:**
+        1. El cliente realiza una solicitud para obtener todos los roles, especificando la página y el límite de resultados.
+        2. El servidor primero verifica si los datos están almacenados en caché.
+        3. Si los datos están en caché, se devuelven directamente al cliente.
+        4. Si no están en caché, el servidor consulta la base de datos y luego almacena los resultados en caché.
+        5. El servidor devuelve la lista de roles con la información de paginación.
+
+        **Códigos de estado:**
+        - **200**: Roles obtenidos exitosamente.
+        - **500**: Error en el servidor al obtener los roles.
+      operationId: "getAllRoleUsers"
+      tags:
+      - "Roles"
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: "page"
+        in: "query"
+        description: "Número de página para paginación (predeterminado es 1)."
+        required: false
+        schema:
+          type: integer
+          example: 1
+      - name: "limit"
+        in: "query"
+        description: "Número de resultados por página (predeterminado es 10)."
+        required: false
+        schema:
+          type: integer
+          example: 10
+      responses:
+        "200":
+          description: "Roles obtenidos exitosamente."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: "Roles obtenidos exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      totalRecords:
+                        type: integer
+                        example: 25
+                      totalPages:
+                        type: integer
+                        example: 3
+                      currentPage:
+                        type: integer
+                        example: 1
+                      recordsPerPage:
+                        type: integer
+                        example: 10
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id_role:
+                              type: string
+                              example: "1a2b3c4d"
+                            role_name:
+                              type: string
+                              example: "Administrador"
+                            description:
+                              type: string
+                              example: "Rol con acceso completo"
+                            createdAt:
+                              type: string
+                              format: date-time
+                              example: "2024-12-10T11:02:23.426Z"
+                            updatedAt:
+                              type: string
+                              format: date-time
+                              example: "2024-12-10T11:02:23.426Z"
+        "500":
+          description: "Error al obtener los roles."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "¡Ops! Ha ocurrido un error. Por favor, inténtalo de nuevo."
+  /role/get-by-id/{id}:
+    get:
+      summary: "Obtener un rol por ID"
+      description: |
+        Esta ruta permite obtener un rol específico por su ID. El servidor primero intenta obtener el rol desde la base de datos y si no se encuentra, devuelve un mensaje de error.
+
+        **Códigos de estado:**
+        - **200**: Rol obtenido exitosamente.
+        - **404**: Rol no encontrado.
+        - **500**: Error en el servidor al obtener el rol.
+      operationId: "getRoleById"
+      tags:
+      - "Roles"
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: "UUID"
+        in: "path"
+        required: true
+        description: "UUID del rol a obtener"
+        schema:
+          type: string
+          example: "string"
+      responses:
+        "200":
+          description: "Rol obtenido exitosamente."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: "Rol obtenido exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      id_role:
+                        type: string
+                        example: "1a2b3c4d"
+                      role_name:
+                        type: string
+                        example: "Administrador"
+                      description:
+                        type: string
+                        example: "Rol con acceso completo"
+                      createdAt:
+                        type: string
+                        format: date-time
+                        example: "2024-12-10T11:02:23.426Z"
+                      updatedAt:
+                        type: string
+                        format: date-time
+                        example: "2024-12-10T11:02:23.426Z"
+        "404":
+          description: "Rol no encontrado."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "Rol no encontrado."
+        "500":
+          description: "Error al obtener el rol."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "¡Ops! Ha ocurrido un error. Por favor, inténtalo de nuevo."
+  # LAB
+  /lab/all:
+    get:
+      summary: "Obtener todos los laboratorios"
+      description: |
+        Esta ruta permite obtener todos los laboratorios del sistema con soporte de paginación. Si los laboratorios han sido previamente consultados, se recuperan desde la caché para mejorar el rendimiento.
+
+        **Flujo de obtención:**
+        1. El cliente realiza una solicitud para obtener todos los laboratorios, especificando la página y el límite de resultados.
+        2. El servidor primero verifica si los datos están almacenados en caché.
+        3. Si los datos están en caché, se devuelven directamente al cliente.
+        4. Si no están en caché, el servidor consulta la base de datos y luego almacena los resultados en caché.
+        5. El servidor devuelve la lista de laboratorios con la información de paginación.
+
+        **Códigos de estado:**
+        - **200**: Laboratorios obtenidos exitosamente.
+        - **404**: No se encontraron laboratorios.
+        - **500**: Error en el servidor al obtener los laboratorios.
+      operationId: "getAllLabs"
+      tags:
+      - "Laboratorios"
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: "page"
+        in: "query"
+        description: "Número de página para paginación (predeterminado es 1)."
+        required: false
+        schema:
+          type: integer
+          example: 1
+      - name: "limit"
+        in: "query"
+        description: "Número de resultados por página (predeterminado es 10)."
+        required: false
+        schema:
+          type: integer
+          example: 10
+      responses:
+        "200":
+          description: "Laboratorios obtenidos exitosamente."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: "Laboratorios obtenidos exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      totalRecords:
+                        type: integer
+                        example: 15
+                      totalPages:
+                        type: integer
+                        example: 2
+                      currentPage:
+                        type: integer
+                        example: 1
+                      recordsPerPage:
+                        type: integer
+                        example: 10
+                      labs:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id_lab:
+                              type: string
+                              example: "1a2b3c4d"
+                            lab_name:
+                              type: string
+                              example: "Laboratorio de Biología"
+                            description:
+                              type: string
+                              example: "Laboratorio especializado en investigaciones biológicas"
+                            createdAt:
+                              type: string
+                              format: date-time
+                              example: "2024-12-10T11:02:23.426Z"
+                            updatedAt:
+                              type: string
+                              format: date-time
+                              example: "2024-12-10T11:02:23.426Z"
+        "404":
+          description: "No se encontraron laboratorios."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "No se encontraron laboratorios."
+        "500":
+          description: "Error al obtener los laboratorios."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "¡Ops! Ha ocurrido un error. Por favor, inténtalo de nuevo."
+  /lab/get-by-id/{id}:
+    get:
+      summary: "Obtener un laboratorio por ID"
+      description: |
+        Esta ruta permite obtener un laboratorio específico por su ID. El servidor primero intenta obtener el laboratorio desde la base de datos y si no se encuentra, devuelve un mensaje de error.
+
+        **Códigos de estado:**
+        - **200**: Laboratorio obtenido exitosamente.
+        - **404**: Laboratorio no encontrado.
+        - **500**: Error en el servidor al obtener el laboratorio.
+      operationId: "getLabById"
+      tags:
+      - "Laboratorios"
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: "id"
+        in: "path"
+        required: true
+        description: "ID del laboratorio a obtener"
+        schema:
+          type: string
+          example: "1a2b3c4d"
+      responses:
+        "200":
+          description: "Laboratorio obtenido exitosamente."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: "Laboratorio obtenido exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      id_lab:
+                        type: string
+                        example: "1a2b3c4d"
+                      lab_name:
+                        type: string
+                        example: "Laboratorio de Biología"
+                      description:
+                        type: string
+                        example: "Laboratorio especializado en investigaciones biológicas"
+                      createdAt:
+                        type: string
+                        format: date-time
+                        example: "2024-12-10T11:02:23.426Z"
+                      updatedAt:
+                        type: string
+                        format: date-time
+                        example: "2024-12-10T11:02:23.426Z"
+        "404":
+          description: "Laboratorio no encontrado."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "Laboratorio no encontrado."
+        "500":
+          description: "Error al obtener el laboratorio."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "¡Ops! Ha ocurrido un error. Por favor, inténtalo de nuevo."
+  /lab/create:
+    post:
+      tags:
+      - Laboratorios
+      summary: Crear un laboratorio nuevo
+      description: Crea un laboratorio nuevo con los datos proporcionados y valida los campos.
+      operationId: createLab
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: El nombre del laboratorio
+                  example: "Test con validación 7"
+                location:
+                  type: string
+                  description: La ubicación del laboratorio
+                  example: "Para cosas de medicina 22"
+                description:
+                  type: string
+                  description: Descripción del laboratorio
+                  example: ""
+                id_analyst_fk:
+                  type: string
+                  description: El ID del analista asignado (UUID)
+                  example: "37bd2cab-a7e4-47af-9e51-15ea99db2dd5"
+              required:
+              - name
+              - location
+              - id_analyst_fk
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: El nombre del laboratorio
+                  example: "Test con validación 7"
+                location:
+                  type: string
+                  description: La ubicación del laboratorio
+                  example: "Para cosas de medicina 22"
+                description:
+                  type: string
+                  description: Descripción del laboratorio
+                  example: ""
+                id_analyst_fk:
+                  type: string
+                  description: El ID del analista asignado (UUID)
+                  example: "37bd2cab-a7e4-47af-9e51-15ea99db2dd5"
+              required:
+              - name
+              - location
+              - id_analyst_fk
+      responses:
+        '201':
+          description: Laboratorio creado exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    description: ID del nuevo laboratorio
+                    example: 123
+                  name:
+                    type: string
+                    description: El nombre del laboratorio
+                    example: "Test con validación 7"
+                  location:
+                    type: string
+                    description: La ubicación del laboratorio
+                    example: "Para cosas de medicina 22"
+                  description:
+                    type: string
+                    description: Descripción del laboratorio
+                    example: ""
+                  id_analyst_fk:
+                    type: string
+                    description: El ID del analista asignado (UUID)
+                    example: "37bd2cab-a7e4-47af-9e51-15ea99db2dd5"
+        '400':
+          description: Solicitud incorrecta (por ejemplo, nombre ya existe, usuario no tiene rol, etc.)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 400
+                  message:
+                    type: string
+                    example: "Laboratorio ya existe con el mismo nombre."
+        '404':
+          description: Laboratorio o supervisor no encontrado o no disponible
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "Laboratorio no encontrado o supervisor no disponible."
+        '500':
+          description: Error interno en el servidor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "Error interno en el servidor."
+  /lab/update/{id}:
+    put:
+      tags:
+      - Laboratorios
+      summary: Actualizar un laboratorio existente
+      description: Actualiza los detalles de un laboratorio existente, validando los campos proporcionados.
+      operationId: updateLab
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID del laboratorio a actualizar
+        schema:
+          type: string
+          example: "123"
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: El nombre del laboratorio
+                  example: "Test 2 new"
+                location:
+                  type: string
+                  description: La ubicación del laboratorio
+                  example: "Ubicac tes ca ddd"
+                description:
+                  type: string
+                  description: Descripción del laboratorio
+                  example: "d"
+                active:
+                  type: boolean
+                  description: Estado de actividad del laboratorio
+                  example: true
+                id_supervisor_fk:
+                  type: string
+                  description: ID del supervisor del laboratorio (UUID)
+                  example: "98bc56b3-331d-4843-be34-1dcf169097a1"
+              required:
+              - name
+              - location
+              - active
+              - id_supervisor_fk
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: El nombre del laboratorio
+                  example: "Test 2 new"
+                location:
+                  type: string
+                  description: La ubicación del laboratorio
+                  example: "Ubicac tes ca ddd"
+                description:
+                  type: string
+                  description: Descripción del laboratorio
+                  example: "d"
+                active:
+                  type: boolean
+                  description: Estado de actividad del laboratorio
+                  example: true
+                id_supervisor_fk:
+                  type: string
+                  description: ID del supervisor del laboratorio (UUID)
+                  example: "98bc56b3-331d-4843-be34-1dcf169097a1"
+              required:
+              - name
+              - location
+              - active
+              - id_supervisor_fk
+      responses:
+        '200':
+          description: Laboratorio actualizado exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    description: El nombre del laboratorio
+                    example: "Test 2 new"
+                  location:
+                    type: string
+                    description: La ubicación del laboratorio
+                    example: "Ubicac tes ca ddd"
+                  description:
+                    type: string
+                    description: Descripción del laboratorio
+                    example: "d"
+                  active:
+                    type: boolean
+                    description: Estado de actividad del laboratorio
+                    example: true
+                  id_supervisor_fk:
+                    type: string
+                    description: ID del supervisor asignado (UUID)
+                    example: "98bc56b3-331d-4843-be34-1dcf169097a1"
+        '400':
+          description: Solicitud incorrecta (por ejemplo, ID inválido o campos faltantes)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 400
+                  message:
+                    type: string
+                    example: "El campo 'name' es requerido."
+        '404':
+          description: Laboratorio no encontrado o supervisor no disponible
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "Laboratorio no encontrado o supervisor no disponible."
+        '500':
+          description: Error interno en el servidor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "Error interno en el servidor."
+  /lab/delete/{id}:
+    delete:
+      tags:
+      - Laboratorios
+      summary: Eliminar un laboratorio existente
+      description: Elimina un laboratorio existente, validando que no esté en uso.
+      operationId: deleteLab
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID del laboratorio a eliminar
+        schema:
+          type: string
+          example: "123"
+      responses:
+        '200':
+          description: Laboratorio eliminado exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: "Laboratorio eliminado exitosamente."
+        '400':
+          description: El laboratorio está en funcionamiento o la solicitud es incorrecta
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 400
+                  message:
+                    type: string
+                    example: "El laboratorio está en funcionamiento."
+        '404':
+          description: Laboratorio no encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "Laboratorio no encontrado."
+        '500':
+          description: Error interno en el servidor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "Error al eliminar el laboratorio."
+  /lab/assing-analyst:
+    post:
+      tags:
+      - Laboratorios
+      summary: Asignar un analista a un laboratorio
+      description: Asigna un analista a un laboratorio validando los campos proporcionados y los roles del usuario.
+      operationId: assignAnalystLab
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                id_lab_fk:
+                  type: string
+                  description: ID del laboratorio al que se asignará el analista
+                  example: "123"
+                id_analyst_fk:
+                  type: string
+                  description: ID del analista a asignar al laboratorio
+                  example: "456"
+              required:
+              - id_lab_fk
+              - id_analyst_fk
+          application/json:
+            schema:
+              type: object
+              properties:
+                id_lab_fk:
+                  type: string
+                  description: ID del laboratorio al que se asignará el analista
+                  example: "123"
+                id_analyst_fk:
+                  type: string
+                  description: ID del analista a asignar al laboratorio
+                  example: "456"
+              required:
+              - id_lab_fk
+              - id_analyst_fk
+      responses:
+        '201':
+          description: Analista asignado exitosamente al laboratorio
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  code:
+                    type: integer
+                    example: 201
+                  message:
+                    type: string
+                    example: "Analista asignado exitosamente al laboratorio."
+                  data:
+                    type: object
+                    properties:
+                      id_lab_fk:
+                        type: string
+                        description: ID del laboratorio asignado
+                        example: "123"
+                      id_analyst_fk:
+                        type: string
+                        description: ID del analista asignado
+                        example: "456"
+        '400':
+          description: Solicitud incorrecta (por ejemplo, laboratorio no disponible, usuario sin rol asignado, etc.)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 400
+                  message:
+                    type: string
+                    example: "El laboratorio no existe o no está disponible."
+        '404':
+          description: Usuario no encontrado o suspendido
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "El usuario no existe o está suspendido."
+        '500':
+          description: Error interno en el servidor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "Error al asignar el analista al laboratorio."
+  /lab/report/pdf:
+    get:
+      tags:
+      - Laboratorios
+      summary: Generar reporte PDF de laboratorios
+      description: Genera un reporte en formato PDF de los laboratorios dentro de un rango de fechas y zona horaria especificada.
+      operationId: generatePdfReport
+      parameters:
+      - name: startDate
+        in: query
+        required: false
+        description: Fecha de inicio para filtrar los laboratorios
+        schema:
+          type: string
+          format: date
+          example: "2024-01-01"
+      - name: endDate
+        in: query
+        required: false
+        description: Fecha de finalización para filtrar los laboratorios
+        schema:
+          type: string
+          format: date
+          example: "2024-12-31"
+      responses:
+        '200':
+          description: Reporte PDF generado exitosamente
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Solicitud incorrecta
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 400
+                  message:
+                    type: string
+                    example: "Parámetros inválidos."
+        '404':
+          description: No se encontraron registros de laboratorios para generar el reporte
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "No se encontraron registros de laboratorios para generar el reporte."
+        '500':
+          description: Error interno en el servidor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "Error al generar el reporte PDF de laboratorios."
+  # ACCESS LAB 
+  /access-lab/all:
+    get:
+      tags:
+      - Accesos a Laboratorios
+      summary: Obtener lista de accesos a laboratorios
+      description: Obtiene una lista de los accesos a laboratorios con paginación, filtrado por número de tarjeta de identificación.
+      operationId: getAllAccessLabs
+      parameters:
+      - name: page
+        in: query
+        required: false
+        description: "Número de página para paginación (valor por defecto: 1)"
+        schema:
+          type: integer
+          example: 1
+      - name: limit
+        in: query
+        required: false
+        description: " Número de registros por página (valor por defecto: 10)"
+        schema:
+          type: integer
+          example: 10
+      - name: identification_card
+        in: query
+        required: false
+        description: Filtro por número de tarjeta de identificación
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Accesos a laboratorios obtenidos exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: "Accesos a laboratorios obtenidos exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      totalRecords:
+                        type: integer
+                        example: 50
+                      totalPages:
+                        type: integer
+                        example: 5
+                      currentPage:
+                        type: integer
+                        example: 1
+                      recordsPerPage:
+                        type: integer
+                        example: 10
+                      labs:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              example: 1
+                            identification_card:
+                              type: string
+                              example: "12345"
+                            status:
+                              type: string
+                              example: "Active"
+                            createdAt:
+                              type: string
+                              format: date-time
+                              example: "2024-12-10T00:00:00Z"
+        '404':
+          description: No se encontraron accesos a laboratorios
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "No se encontraron accesos a laboratorios."
+        '500':
+          description: Error interno en el servidor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "Error al obtener accesos a laboratorios."
+  /access-lab/get-by-id/{id}:
+    get:
+      tags:
+      - Accesos a Laboratorios
+      summary: Obtener acceso a laboratorio por ID
+      description: Obtiene los detalles de un acceso a laboratorio específico.
+      operationId: getAccessLabById
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID del acceso al laboratorio a obtener
+        schema:
+          type: string
+          example: 1
+      responses:
+        '200':
+          description: Acceso al laboratorio obtenido exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: "Acceso al laboratorio obtenido exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      identification_card:
+                        type: string
+                        example: "12345"
+                      status:
+                        type: string
+                        example: "Active"
+                      createdAt:
+                        type: string
+                        format: date-time
+                        example: "2024-12-10T00:00:00Z"
+        '404':
+          description: Acceso al laboratorio no encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "Acceso al laboratorio no encontrado."
+        '500':
+          description: Error interno en el servidor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "Error al obtener el acceso al laboratorio."
+  /access-lab/create:
+    post:
+      tags:
+      - Accesos a Laboratorios
+      summary: Crear un nuevo acceso a laboratorio
+      description: Crea un acceso a un laboratorio para un usuario con la información proporcionada.
+      operationId: createAcessLab
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                full_name:
+                  type: string
+                  example: "Angelo G"
+                  description: Nombre completo de la persona que solicita el acceso
+                identification_card:
+                  type: string
+                  example: "0202486650"
+                  description: Número de tarjeta de identificación
+                type_access:
+                  type: string
+                  example: "asasas"
+                  description: Tipo de acceso al laboratorio
+                id_lab_fk:
+                  type: string
+                  example: "6ee8bb39-62e8-4bde-9005-d80cbd8524e7"
+                  description: ID del laboratorio al que se solicita el acceso
+              required:
+              - full_name
+              - identification_card
+              - type_access
+              - id_lab_fk
+          application/json:
+            schema:
+              type: object
+              properties:
+                full_name:
+                  type: string
+                  example: "Angelo G"
+                  description: Nombre completo de la persona que solicita el acceso
+                identification_card:
+                  type: string
+                  example: "0202486650"
+                  description: Número de tarjeta de identificación
+                type_access:
+                  type: string
+                  example: "asasas"
+                  description: Tipo de acceso al laboratorio
+                id_lab_fk:
+                  type: string
+                  example: "6ee8bb39-62e8-4bde-9005-d80cbd8524e7"
+                  description: ID del laboratorio al que se solicita el acceso
+      responses:
+        '201':
+          description: Acceso a laboratorio creado exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  code:
+                    type: integer
+                    example: 201
+                  message:
+                    type: string
+                    example: "Acceso a laboratorio creado exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      id_access_lab:
+                        type: integer
+                        example: 1
+                      full_name:
+                        type: string
+                        example: "Angelo G"
+                      identification_card:
+                        type: string
+                        example: "0202486650"
+                      type_access:
+                        type: string
+                        example: "asasas"
+                      id_lab_fk:
+                        type: string
+                        example: "6ee8bb39-62e8-4bde-9005-d80cbd8524e7"
+                      createdAt:
+                        type: string
+                        format: date-time
+                        example: "2024-12-10T00:00:00Z"
+                      updatedAt:
+                        type: string
+                        format: date-time
+                        example: "2024-12-10T00:00:00Z"
+        '400':
+          description: Datos de entrada inválidos o error de validación
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 400
+                  message:
+                    type: string
+                    example: "Error en los datos proporcionados."
+        '404':
+          description: Laboratorio no encontrado o no disponible
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "Laboratorio no encontrado o no disponible."
+        '500':
+          description: Error interno en el servidor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "Error al crear el acceso a laboratorio."
+  /access-lab/update/{id}:
+    put:
+      tags:
+      - Accesos a Laboratorios
+      summary: Actualizar acceso a laboratorio
+      description: Actualiza la información del acceso a un laboratorio para un usuario con los datos proporcionados.
+      operationId: updateAcessLab
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: El ID del acceso al laboratorio a actualizar
+        schema:
+          type: string
+          example: "6ee8bb39-62e8-4bde-9005-d80cbd8524e7"
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                full_name:
+                  type: string
+                  example: "Angelo G"
+                  description: Nombre completo de la persona que solicita el acceso
+                identification_card:
+                  type: string
+                  example: "0202486650"
+                  description: Número de tarjeta de identificación
+                type_access:
+                  type: string
+                  example: "asasas"
+                  description: Tipo de acceso al laboratorio
+                id_lab_fk:
+                  type: string
+                  example: "6ee8bb39-62e8-4bde-9005-d80cbd8524e7"
+                  description: ID del laboratorio al que se solicita el acceso
+              required:
+              - full_name
+              - identification_card
+              - type_access
+              - id_lab_fk
+          application/json:
+            schema:
+              type: object
+              properties:
+                full_name:
+                  type: string
+                  example: "Angelo G"
+                  description: Nombre completo de la persona que solicita el acceso
+                identification_card:
+                  type: string
+                  example: "0202486650"
+                  description: Número de tarjeta de identificación
+                type_access:
+                  type: string
+                  example: "asasas"
+                  description: Tipo de acceso al laboratorio
+                id_lab_fk:
+                  type: string
+                  example: "6ee8bb39-62e8-4bde-9005-d80cbd8524e7"
+                  description: ID del laboratorio al que se solicita el acceso
+      responses:
+        '200':
+          description: Acceso a laboratorio actualizado exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: "Acceso a laboratorio actualizado exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      id_access_lab:
+                        type: integer
+                        example: 1
+                      full_name:
+                        type: string
+                        example: "Angelo G"
+                      identification_card:
+                        type: string
+                        example: "0202486650"
+                      type_access:
+                        type: string
+                        example: "asasas"
+                      id_lab_fk:
+                        type: string
+                        example: "6ee8bb39-62e8-4bde-9005-d80cbd8524e7"
+                      createdAt:
+                        type: string
+                        format: date-time
+                        example: "2024-12-10T00:00:00Z"
+                      updatedAt:
+                        type: string
+                        format: date-time
+                        example: "2024-12-10T00:00:00Z"
+        '400':
+          description: Datos de entrada inválidos o error de validación
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 400
+                  message:
+                    type: string
+                    example: "Error en los datos proporcionados."
+        '404':
+          description: Acceso a laboratorio no encontrado o laboratorio no disponible
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "Acceso a laboratorio no encontrado o laboratorio no disponible."
+        '500':
+          description: Error interno en el servidor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "Error al actualizar el acceso a laboratorio."
+  /access-lab/change-permission:
+    post:
+      tags:
+      - Accesos a Laboratorios
+      summary: Cambiar el estado de un acceso a laboratorio
+      description: Permite cambiar el estado de acceso a un laboratorio, validando los datos proporcionados.
+      operationId: changePermissionAcessLab
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                id_access_lab_fk:
+                  type: string
+                  format: uuid
+                  example: "6ee8bb39-62e8-4bde-9005-d80cbd8524e7"
+                  description: ID del laboratorio al que se está cambiando el estado de acceso
+                status:
+                  type: string
+                  enum:
+                  - pending
+                  - approved
+                  - rejected
+                  example: "pending"
+                  description: Nuevo estado del acceso al laboratorio
+              required:
+              - id_access_lab_fk
+              - status
+          application/json:
+            schema:
+              type: object
+              properties:
+                id_access_lab_fk:
+                  type: string
+                  format: uuid
+                  example: "6ee8bb39-62e8-4bde-9005-d80cbd8524e7"
+                  description: ID del laboratorio al que se está cambiando el estado de acceso
+                status:
+                  type: string
+                  enum:
+                  - ACCESS_PENDING
+                  - ACCESS_APPROVED
+                  - ACCESS_REJECTED
+                  example: "ACCESS_APPROVED"
+                  description: Nuevo estado del acceso al laboratorio
+              required:
+              - id_access_lab_fk
+              - status
+      responses:
+        '200':
+          description: Estado de acceso a laboratorio actualizado exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: "Estado de acceso a laboratorio actualizado exitosamente."
+        '400':
+          description: Datos de entrada inválidos o error de validación
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 400
+                  message:
+                    type: string
+                    example: "Error en los datos proporcionados."
+        '404':
+          description: Acceso a laboratorio o estado no encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "El acceso al laboratorio no existe o el estado no fue encontrado."
+        '500':
+          description: Error interno en el servidor
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "Error al cambiar el estado de acceso al laboratorio."
+  /access-lab/report/pdf:
+    get:
+      tags:
+      - Accesos a Laboratorios
+      summary: Generar un reporte en PDF de accesos a laboratorios
+      description: Genera un reporte en PDF con los accesos a los laboratorios entre dos fechas proporcionadas.
+      operationId: generatePdfReport
+      parameters:
+      - in: query
+        name: startDate
+        schema:
+          type: string
+          format: date
+          example: "2024-01-01"
+        description: Fecha de inicio del rango de fecha para el reporte (en formato YYYY-MM-DD).
+      - in: query
+        name: endDate
+        schema:
+          type: string
+          format: date
+          example: "2024-12-31"
+        description: Fecha de fin del rango de fecha para el reporte (en formato YYYY-MM-DD).
+      responses:
+        '200':
+          description: Reporte PDF generado exitosamente
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+                example: "PDF generado"
+        '400':
+          description: Error de validación de parámetros de entrada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 400
+                  message:
+                    type: string
+                    example: "Error en los parámetros proporcionados."
+        '404':
+          description: No se encontraron registros de accesos para generar el reporte
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "No se encontraron registros de accesos para generar el reporte."
+        '500':
+          description: Error interno en el servidor al generar el reporte
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "Error al generar el reporte PDF de accesos."
+  # REACTIVE
+  /reactive/all:
+    get:
+      tags:
+      - Reactivos
+      summary: Obtener una lista paginada de reactivos
+      description: Devuelve una lista de reactivos con paginación, búsqueda por nombre o código, y otros detalles.
+      operationId: getAllReactives
+      parameters:
+      - in: query
+        name: page
+        schema:
+          type: integer
+          example: 1
+        description: Número de página para la paginación.
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          example: 10
+        description: Número de registros por página.
+      - in: query
+        name: name
+        schema:
+          type: string
+          example: "Reactivo A"
+        description: Filtro opcional para el nombre del reactivo.
+      - in: query
+        name: code
+        schema:
+          type: string
+          example: "R001"
+        description: Filtro opcional para el código del reactivo.
+      responses:
+        '200':
+          description: Reactivos obtenidos exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalRecords:
+                    type: integer
+                    example: 100
+                  totalPages:
+                    type: integer
+                    example: 10
+                  currentPage:
+                    type: integer
+                    example: 1
+                  recordsPerPage:
+                    type: integer
+                    example: 10
+                  reactives:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          example: 1
+                        name:
+                          type: string
+                          example: "Reactivo A"
+                        code:
+                          type: string
+                          example: "R001"
+                        createdAt:
+                          type: string
+                          format: date-time
+                          example: "2024-01-01T12:00:00Z"
+        '400':
+          description: Parámetros de consulta inválidos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 400
+                  message:
+                    type: string
+                    example: "Error en los parámetros proporcionados."
+        '404':
+          description: No se encontraron reactivos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "No se encontraron reactivos."
+        '500':
+          description: Error interno en el servidor al obtener los reactivos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "Error al obtener los reactivos."
+  /reactive/get-by-id/{id}:
+    get:
+      tags:
+      - Reactivos
+      summary: Obtener un reactivo por su ID
+      description: Devuelve un reactivo específico por su ID.
+      operationId: getReactiveById
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          example: 1
+        description: El ID del reactivo a obtener.
+      responses:
+        '200':
+          description: Reactivo obtenido exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
                   id:
                     type: integer
                     example: 1
-                  email:
+                  name:
                     type: string
-                    example: "usuario@dominio.com"
-                  role:
+                    example: "Reactivo A"
+                  code:
                     type: string
-                    example: "admin"
+                    example: "R001"
+                  createdAt:
+                    type: string
+                    format: date-time
+                    example: "2024-01-01T12:00:00Z"
+        '404':
+          description: Reactivo no encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "Reactivo no encontrado."
+        '500':
+          description: Error interno en el servidor al obtener el reactivo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "Error al obtener el reactivo."
+  /reactive/create:
+    post:
+      tags:
+      - Reactivos
+      summary: Crear un nuevo reactivo
+      description: Crea un nuevo reactivo con información inicial como nombre, código, cantidad, etc.
+      operationId: createReactive
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: "Producto Químico B"
+                code:
+                  type: string
+                  example: "PB-12345"
+                number_of_containers:
+                  type: integer
+                  example: 5
+                initial_quantity:
+                  type: number
+                  format: float
+                  example: 50.10
+                unit:
+                  type: string
+                  example: "kg"
+                cas:
+                  type: integer
+                  example: 877447
+                expiration_date:
+                  type: string
+                  format: date-time
+                  example: "2025-12-05T10:00:00Z"
+                is_controlled:
+                  type: boolean
+                  example: false
+              required:
+              - name
+              - code
+              - number_of_containers
+              - initial_quantity
+              - unit
+              - cas
+              - expiration_date
+              - is_controlled
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: "Producto Químico B"
+                code:
+                  type: string
+                  example: "PB-12345"
+                number_of_containers:
+                  type: integer
+                  example: 5
+                initial_quantity:
+                  type: number
+                  format: float
+                  example: 50.10
+                unit:
+                  type: string
+                  example: "kg"
+                cas:
+                  type: integer
+                  example: 877447
+                expiration_date:
+                  type: string
+                  format: date-time
+                  example: "2025-12-05T10:00:00Z"
+                is_controlled:
+                  type: boolean
+                  example: false
+      responses:
+        '201':
+          description: Reactivo creado exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id_reactive:
+                    type: integer
+                    example: 1
+                  name:
+                    type: string
+                    example: "Producto Químico B"
+                  code:
+                    type: string
+                    example: "PB-12345"
+                  current_quantity:
+                    type: number
+                    format: float
+                    example: 50.10
+                  createdAt:
+                    type: string
+                    format: date-time
+                    example: "2024-12-10T10:00:00Z"
+        '400':
+          description: Error en la validación de datos de entrada (nombre o código ya existe)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 400
+                  message:
+                    type: string
+                    example: "Ya existe reactivo con este nombre o código."
+        '500':
+          description: Error interno en el servidor al crear el reactivo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "Error interno del servidor al crear el reactivo."
+  /reactive/update/{id}:
+    put:
+      tags:
+      - Reactivos
+      summary: Actualizar un reactivo existente
+      description: Actualiza la información de un reactivo en la base de datos según el ID proporcionado.
+      operationId: updateReactive
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+        description: ID del reactivo a actualizar
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: "Producto Químico B"
+                code:
+                  type: string
+                  example: "PB-12345"
+                number_of_containers:
+                  type: integer
+                  example: 5
+                initial_quantity:
+                  type: number
+                  format: float
+                  example: 50.10
+                unit:
+                  type: string
+                  example: "kg"
+                cas:
+                  type: integer
+                  example: 877447
+                expiration_date:
+                  type: string
+                  format: date-time
+                  example: "2025-12-05T10:00:00Z"
+                is_controlled:
+                  type: boolean
+                  example: false
+              required:
+              - name
+              - code
+              - number_of_containers
+              - initial_quantity
+              - unit
+              - cas
+              - expiration_date
+              - is_controlled
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: "Producto Químico B"
+                code:
+                  type: string
+                  example: "PB-12345"
+                number_of_containers:
+                  type: integer
+                  example: 5
+                initial_quantity:
+                  type: number
+                  format: float
+                  example: 50.10
+                unit:
+                  type: string
+                  example: "kg"
+                cas:
+                  type: integer
+                  example: 877447
+                expiration_date:
+                  type: string
+                  format: date-time
+                  example: "2025-12-05T10:00:00Z"
+                is_controlled:
+                  type: boolean
+                  example: false
+      responses:
+        '200':
+          description: Reactivo actualizado exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id_reactive:
+                    type: integer
+                    example: 1
+                  name:
+                    type: string
+                    example: "Producto Químico B"
+                  code:
+                    type: string
+                    example: "PB-12345"
+                  current_quantity:
+                    type: number
+                    format: float
+                    example: 50.10
+                  updatedAt:
+                    type: string
+                    format: date-time
+                    example: "2024-12-10T10:00:00Z"
+        '400':
+          description: Error en la validación de datos de entrada (nombre o código ya existe)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 400
+                  message:
+                    type: string
+                    example: "Ya existe reactivo con este nombre o código."
+        '404':
+          description: Reactivo no encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "Reactivo no encontrado con el ID proporcionado."
+        '500':
+          description: Error interno en el servidor al actualizar el reactivo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "Error interno del servidor al actualizar el reactivo."
+  /reactive/delete/{id}:
+    delete:
+      tags:
+      - Reactivos
+      summary: Eliminar un reactivo existente
+      description: Elimina un reactivo de la base de datos según el ID proporcionado.
+      operationId: deleteReactive
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+        description: ID del reactivo a eliminar
+      responses:
+        '200':
+          description: Reactivo eliminado exitosamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Reactivo eliminado exitosamente."
+        '404':
+          description: Reactivo no encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "Reactivo no encontrado."
+        '500':
+          description: Error interno en el servidor al eliminar el reactivo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "Error al eliminar el reactivo."
+  /reactive/report/pdf:
+    get:
+      tags:
+      - Reactivos
+      summary: Generar un reporte en PDF de los reactivos
+      description: Genera un reporte en formato PDF de los reactivos registrados en un rango de fechas especificado.
+      operationId: generatePdfReport
+      parameters:
+      - in: query
+        name: startDate
+        required: false
+        schema:
+          type: string
+          format: date
+        description: Fecha de inicio del rango para el reporte (en formato YYYY-MM-DD).
+      - in: query
+        name: endDate
+        required: false
+        schema:
+          type: string
+          format: date
+        description: Fecha de fin del rango para el reporte (en formato YYYY-MM-DD).
+      responses:
+        '200':
+          description: Reporte PDF generado exitosamente
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: byte
+                example: "base64-encoded-pdf-content"
+        '404':
+          description: No se encontraron registros de reactivos para generar el reporte
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "No se encontraron registros de reactivos para generar el reporte."
+        '500':
+          description: Error interno en el servidor al generar el reporte PDF
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "Error al generar el reporte PDF de reactivos."
+  # REACTIVE CONSUMPTION
+  /consumption/all:
+    get:
+      summary: "Obtener todos los registros de consumo de reactivos"
+      description: |
+        Esta ruta permite obtener todos los registros de consumo de reactivos con soporte de paginación y filtrado por nombre del experimento. Si los datos han sido previamente consultados, se recuperan desde la caché para mejorar el rendimiento.
+
+        **Flujo de obtención:**
+        1. El cliente realiza una solicitud para obtener todos los registros de consumo de reactivos, especificando la página, el límite de resultados y el nombre del experimento (opcional).
+        2. El servidor primero verifica si los datos están almacenados en caché.
+        3. Si los datos están en caché, se devuelven directamente al cliente.
+        4. Si no están en caché, el servidor consulta la base de datos y luego almacena los resultados en caché.
+        5. El servidor devuelve la lista de registros con la información de paginación.
+
+        **Códigos de estado:**
+        - **200**: Registros de consumo obtenidos exitosamente.
+        - **404**: No se encontraron registros de consumo de reactivos.
+        - **500**: Error en el servidor al obtener los registros de consumo.
+      operationId: "getAllConsumptions"
+      tags:
+      - "Consumptions"
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: "page"
+        in: "query"
+        description: "Número de página para paginación (predeterminado es 1)."
+        required: false
+        schema:
+          type: integer
+          example: 1
+      - name: "limit"
+        in: "query"
+        description: "Número de resultados por página (predeterminado es 10)."
+        required: false
+        schema:
+          type: integer
+          example: 10
+      - name: "name_experiment"
+        in: "query"
+        description: "Filtrar por nombre del experimento (opcional)."
+        required: false
+        schema:
+          type: string
+          example: "Biología"
+      responses:
+        "200":
+          description: "Registros de consumo obtenidos exitosamente."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: "Registro de consumo de reactivos obtenidos exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      totalRecords:
+                        type: integer
+                        example: 15
+                      totalPages:
+                        type: integer
+                        example: 2
+                      currentPage:
+                        type: integer
+                        example: 1
+                      recordsPerPage:
+                        type: integer
+                        example: 10
+                      reactives:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id_consumption:
+                              type: string
+                              example: "1a2b3c4d"
+                            name_experiment:
+                              type: string
+                              example: "Experimento de Biología"
+                            amount:
+                              type: integer
+                              example: 5
+                            createdAt:
+                              type: string
+                              format: date-time
+                              example: "2024-12-10T11:02:23.426Z"
+                            updatedAt:
+                              type: string
+                              format: date-time
+                              example: "2024-12-10T11:02:23.426Z"
         "404":
-          description: "Usuario no encontrado."
+          description: "No se encontraron registros de consumo."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "No se encontraron registros de consumo de reactivos."
         "500":
-          description: "Error en el servidor."
+          description: "Error al obtener los registros de consumo."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "¡Ops! Ha ocurrido un error. Por favor, inténtalo de nuevo."
+  /consumption/get-by-id/{id}:
+    get:
+      summary: "Obtener un registro de consumo de reactivo por ID"
+      description: |
+        Esta ruta permite obtener un registro específico de consumo de reactivo por su ID. Si el registro no se encuentra, se devuelve un mensaje de error.
+
+        **Códigos de estado:**
+        - **200**: Registro de consumo de reactivo obtenido exitosamente.
+        - **404**: Registro de consumo de reactivo no encontrado.
+        - **500**: Error en el servidor al obtener el registro.
+      operationId: "getConsumptionsById"
+      tags:
+      - "Consumptions"
+      security:
+      - BearerAuth: []
+      parameters:
+      - name: "id"
+        in: "path"
+        required: true
+        description: "ID del registro de consumo de reactivo"
+        schema:
+          type: string
+          example: "1a2b3c4d"
+      responses:
+        "200":
+          description: "Registro de consumo de reactivo obtenido exitosamente."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  code:
+                    type: integer
+                    example: 200
+                  message:
+                    type: string
+                    example: "Consumo de reactivo obtenido exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      id_consumption:
+                        type: string
+                        example: "1a2b3c4d"
+                      name_experiment:
+                        type: string
+                        example: "Experimento de Biología"
+                      amount:
+                        type: integer
+                        example: 5
+                      createdAt:
+                        type: string
+                        format: date-time
+                        example: "2024-12-10T11:02:23.426Z"
+                      updatedAt:
+                        type: string
+                        format: date-time
+                        example: "2024-12-10T11:02:23.426Z"
+        "404":
+          description: "Registro de consumo de reactivo no encontrado."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: "Consumo de reactivo no encontrado."
+        "500":
+          description: "Error al obtener el consumo del reactivo."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "error"
+                  code:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: "¡Ops! Ha ocurrido un error. Por favor, inténtalo de nuevo."
+  /consumption/create:
+    post:
+      tags:
+      - Consumptions
+      summary: Crear consumo de reactivos
+      description: Endpoint para registrar el consumo de un reactivo en un experimento.
+      operationId: createConsumptionsReactive
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                id_reactive_fk:
+                  type: string
+                  description: ID del reactivo.
+                  example: "02a1ebc5-6ff8-43f2-b88f-752d81650663"
+                name_experiment:
+                  type: string
+                  description: Nombre del experimento.
+                  example: "Análisis Químico n4"
+                quantity_consumed:
+                  type: number
+                  format: float
+                  description: Cantidad consumida del reactivo.
+                  example: 0.1
+                unit:
+                  type: string
+                  description: Unidad de medida.
+                  example: "kg"
+            required:
+            - id_reactive_fk
+            - name_experiment
+            - quantity_consumed
+            - initial_quantity
+            - unit
+      responses:
+        '201':
+          description: Utilización de reactivo creada exitosamente.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Utilización de reactivo creado exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        example: "123e4567-e89b-12d3-a456-426614174000"
+                      id_reactive_fk:
+                        type: string
+                        example: "02a1ebc5-6ff8-43f2-b88f-752d81650663"
+                      name_experiment:
+                        type: string
+                        example: "Análisis Químico n4"
+                      quantity_consumed:
+                        type: number
+                        example: 0.1
+                      unit:
+                        type: string
+                        example: "kg"
+                      name_analyst:
+                        type: string
+                        example: "Juan Pérez"
+        '400':
+          description: Error en los datos proporcionados.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "La unidad de consumo y del reactivo no coinciden."
+        '404':
+          description: Reactivo no encontrado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Reactivo no encontrado"
+        '500':
+          description: Error interno del servidor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Error interno del servidor."
+  /consumption/delete/{id}:
+    delete:
+      tags:
+      - Consumptions
+      summary: Eliminar consumo de reactivos
+      description: Elimina un registro de consumo de reactivo y restaura la cantidad consumida al reactivo correspondiente.
+      operationId: deleteConsumptionsReactive
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID del registro de consumo de reactivo a eliminar.
+        schema:
+          type: string
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '201':
+          description: Registro de consumo eliminado y cantidad restaurada.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Registro de consumo de reactivo eliminado exitosamente y cantidad restaurada."
+        '400':
+          description: Error de validación en las unidades del consumo y reactivo.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Las unidades del consumo y del reactivo no coinciden."
+        '404':
+          description: Registro de consumo o reactivo no encontrado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Registro de consumo de reactivo no encontrado."
+        '500':
+          description: Error interno del servidor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Ocurrió un error al eliminar el registro de consumo de reactivo."
+  /consumption/report/pdf:
+    get:
+      tags:
+      - Consumptions
+      summary: Generar reporte PDF de consumo de reactivos
+      description: Genera un reporte PDF con los consumos de reactivos en un rango de fechas especificado.
+      operationId: generatePdfReport
+      parameters:
+      - name: startDate
+        in: query
+        required: false
+        description: Fecha de inicio del rango en formato `YYYY-MM-DD`. Si no se especifica, se toma el inicio del mes actual.
+        schema:
+          type: string
+          format: date
+          example: "2024-01-01"
+      - name: endDate
+        in: query
+        required: false
+        description: Fecha de fin del rango en formato `YYYY-MM-DD`. Si no se especifica, se toma el fin del mes actual.
+        schema:
+          type: string
+          format: date
+          example: "2024-01-31"
+      responses:
+        '200':
+          description: Reporte PDF generado exitosamente.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: No se encontraron registros para el rango de fechas proporcionado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "No se encontraron registros de consumo de reactivos para generar el reporte."
+        '500':
+          description: Error interno del servidor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Ocurrió un error al generar el reporte PDF de consumo de reactivos."
+  # REACTIVE REQUEST
+  /request-reactive/all:
+    get:
+      tags:
+      - Request Reactive
+      summary: Obtener todas las peticiones de reactivos
+      description: Recupera una lista paginada de las peticiones de reactivos con opciones de búsqueda por descripción.
+      operationId: getAllRequestReactives
+      parameters:
+      - name: page
+        in: query
+        required: false
+        description: Número de la página a obtener. Por defecto es 1.
+        schema:
+          type: integer
+          example: 1
+      - name: limit
+        in: query
+        required: false
+        description: Cantidad de registros por página. Por defecto es 10.
+        schema:
+          type: integer
+          example: 10
+      - name: description
+        in: query
+        required: false
+        description: Filtrar por descripción de la petición del reactivo (búsqueda parcial).
+        schema:
+          type: string
+          example: "Reactivo de análisis"
+      responses:
+        '200':
+          description: Peticiones de reactivos obtenidas exitosamente.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Peticiones de reactivos obtenidos exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      totalRecords:
+                        type: integer
+                        example: 50
+                      totalPages:
+                        type: integer
+                        example: 5
+                      currentPage:
+                        type: integer
+                        example: 1
+                      recordsPerPage:
+                        type: integer
+                        example: 10
+                      request_reactives:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                              example: 1
+                            description:
+                              type: string
+                              example: "Reactivo solicitado para análisis."
+                            createdAt:
+                              type: string
+                              format: date-time
+                              example: "2024-12-10T14:30:00Z"
+                            reactive:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                  example: 101
+                                name:
+                                  type: string
+                                  example: "Reactivo Químico A"
+                            user:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                  example: 202
+                                name:
+                                  type: string
+                                  example: "Juan Pérez"
+        '404':
+          description: No se encontraron peticiones de reactivos.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "No se encontraron peticiones de reactivos."
+        '500':
+          description: Error interno del servidor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Error al obtener peticiones de reactivos."
+  /request-reactive/get-by-id/{id}:
+    get:
+      tags:
+      - Request Reactive
+      summary: Obtener una petición de reactivo por ID
+      description: Recupera los detalles de una petición de reactivo específica utilizando su ID.
+      operationId: getRequestReactiveById
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID de la petición del reactivo.
+        schema:
+          type: integer
+          example: 1
+      responses:
+        '200':
+          description: Petición de reactivo obtenida exitosamente.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Petición de reactivo obtenida exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        example: 1
+                      description:
+                        type: string
+                        example: "Reactivo solicitado para análisis."
+                      createdAt:
+                        type: string
+                        format: date-time
+                        example: "2024-12-10T14:30:00Z"
+                      reactive:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                            example: 101
+                          name:
+                            type: string
+                            example: "Reactivo Químico A"
+                      user:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                            example: 202
+                          name:
+                            type: string
+                            example: "Juan Pérez"
+        '404':
+          description: Petición de reactivo no encontrada.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Petición de reactivo no encontrada."
+        '500':
+          description: Error interno del servidor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Error al obtener la petición del reactivo."
+  /request-reactive/create:
+    post:
+      tags:
+      - Request Reactive
+      summary: Crear petición de reactivo
+      description: Endpoint para registrar una nueva petición de reactivo en el sistema.
+      operationId: createRequestReactive
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                id_reactive_fk:
+                  type: string
+                  description: ID del reactivo solicitado.
+                  example: "e5517092-5dc2-44b5-89ee-31ed5459c89f"
+                description:
+                  type: string
+                  description: Descripción de la solicitud.
+                  example: "Solicitud de reactivos para el laboratorio de química"
+                amount_request:
+                  type: integer
+                  description: Cantidad solicitada.
+                  example: 500
+              required:
+              - id_reactive_fk
+              - description
+              - amount_request
+          application/json:
+            schema:
+              type: object
+              properties:
+                id_reactive_fk:
+                  type: string
+                  description: ID del reactivo solicitado.
+                  example: "e5517092-5dc2-44b5-89ee-31ed5459c89f"
+                description:
+                  type: string
+                  description: Descripción de la solicitud.
+                  example: "Solicitud de reactivos para el laboratorio de química"
+                amount_request:
+                  type: integer
+                  description: Cantidad solicitada.
+                  example: 500
+              required:
+              - id_reactive_fk
+              - description
+              - amount_request
+      responses:
+        '201':
+          description: Petición de reactivo creada exitosamente.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Petición de reactivo creado exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        example: "123e4567-e89b-12d3-a456-426614174000"
+                      id_reactive_fk:
+                        type: string
+                        example: "e5517092-5dc2-44b5-89ee-31ed5459c89f"
+                      description:
+                        type: string
+                        example: "Solicitud de reactivos para el laboratorio de química"
+                      amount_request:
+                        type: integer
+                        example: 500
+                      id_supervisor_fk:
+                        type: string
+                        example: "98a2c6df-e3a3-4b4f-b8c5-9f1b02d5a321"
+        '400':
+          description: Error en los datos proporcionados.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "El campo 'description' es requerido."
+        '500':
+          description: Error interno del servidor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Error interno del servidor."
+  /request-reactive/update/{id}:
+    put:
+      tags:
+      - Request Reactive
+      summary: Actualizar petición de reactivo
+      description: |
+        Esta ruta permite actualizar una petición de reactivo en el sistema mediante su ID. Si la petición no se encuentra, se devuelve un mensaje de error.
+
+        **Códigos de estado:**
+        - **200**: Petición de reactivo actualizada exitosamente.
+        - **400**: Error en los datos proporcionados (por ejemplo, estado inválido).
+        - **404**: Petición de reactivo no encontrada.
+        - **500**: Error interno del servidor al actualizar la petición.
+
+        **Parámetros del estado:**
+        - El campo `status` puede tener los siguientes valores:
+          - **pending**: Solicitud en espera.
+          - **approved**: Solicitud aprobada.
+          - **rejected**: Solicitud rechazada.
+      operationId: updateRequestReactive
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID de la petición de reactivo a actualizar.
+        schema:
+          type: string
+        example: "123e4567-e89b-12d3-a456-426614174000"
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                id_reactive_fk:
+                  type: string
+                  description: ID del reactivo relacionado con la petición.
+                  example: "e5517092-5dc2-44b5-89ee-31ed5459c89f"
+                description:
+                  type: string
+                  description: Descripción de la solicitud de reactivo.
+                  example: "Solicitud de reactivos para el laboratorio de química"
+                amount_request:
+                  type: number
+                  format: float
+                  description: Cantidad solicitada del reactivo.
+                  example: 500
+                status:
+                  type: string
+                  description: Estado de la solicitud (e.g., 'rejected', 'approved').
+                  example: "rejected"
+          application/json:
+            schema:
+              type: object
+              properties:
+                id_reactive_fk:
+                  type: string
+                  description: ID del reactivo relacionado con la petición.
+                  example: "e5517092-5dc2-44b5-89ee-31ed5459c89f"
+                description:
+                  type: string
+                  description: Descripción de la solicitud de reactivo.
+                  example: "Solicitud de reactivos para el laboratorio de química"
+                amount_request:
+                  type: number
+                  format: float
+                  description: Cantidad solicitada del reactivo.
+                  example: 500
+                status:
+                  type: string
+                  description: Estado de la solicitud (e.g., 'rejected', 'approved').
+                  example: "rejected"
+      responses:
+        '200':
+          description: Petición de reactivo actualizada exitosamente.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Petición de reactivo actualizada exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        example: "123e4567-e89b-12d3-a456-426614174000"
+                      id_reactive_fk:
+                        type: string
+                        example: "e5517092-5dc2-44b5-89ee-31ed5459c89f"
+                      description:
+                        type: string
+                        example: "Solicitud de reactivos para el laboratorio de química"
+                      amount_request:
+                        type: number
+                        example: 500
+                      status:
+                        type: string
+                        example: "rejected"
+                      name_analyst:
+                        type: string
+                        example: "Juan Pérez"
+        '400':
+          description: Error en los datos proporcionados.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Datos inválidos proporcionados."
+        '404':
+          description: Petición de reactivo no encontrada.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Petición de reactivo no encontrada."
+        '500':
+          description: Error interno del servidor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Error interno del servidor."
+  /request-reactive/delete/{id}:
+    delete:
+      tags:
+      - Request Reactive
+      summary: Eliminar petición de reactivo
+      description: |
+        Esta ruta permite eliminar una petición de reactivo del sistema mediante su ID. Si la petición no se encuentra, se devuelve un mensaje de error.
+
+        **Códigos de estado:**
+        - **200**: Petición de reactivo eliminada exitosamente.
+        - **404**: Petición de reactivo no encontrada.
+        - **500**: Error interno del servidor al eliminar la petición.
+
+      operationId: deleteRequestReactive
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID de la petición de reactivo a eliminar.
+        schema:
+          type: string
+        example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Petición de reactivo eliminada exitosamente.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Petición de reactivo eliminada exitosamente."
+        '404':
+          description: Petición de reactivo no encontrada.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Reactivo no encontrado."
+        '500':
+          description: Error interno del servidor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Error interno del servidor."
+  # SAMPLES
+  /sample/all:
+    get:
+      tags:
+      - Samples
+      summary: Obtener todas las muestras
+      description: |
+        Esta ruta permite obtener una lista de muestras con paginación y filtrado por nombre de solicitante.
+
+        **Códigos de estado:**
+        - **200**: Muestras obtenidas exitosamente.
+        - **404**: No se encontraron muestras.
+        - **500**: Error interno del servidor al obtener las muestras.
+
+      operationId: getAllSamples
+      parameters:
+      - name: page
+        in: query
+        description: Página de resultados para la paginación.
+        required: false
+        schema:
+          type: integer
+          default: 1
+        example: 1
+      - name: limit
+        in: query
+        description: Número de resultados por página.
+        required: false
+        schema:
+          type: integer
+          default: 10
+        example: 10
+      - name: applicant_name
+        in: query
+        description: Nombre del solicitante para filtrar las muestras.
+        required: false
+        schema:
+          type: string
+        example: "Juan Pérez"
+      responses:
+        '200':
+          description: Muestras obtenidas exitosamente.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Muestras obtenidas exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      totalRecords:
+                        type: integer
+                        example: 100
+                      totalPages:
+                        type: integer
+                        example: 10
+                      currentPage:
+                        type: integer
+                        example: 1
+                      recordsPerPage:
+                        type: integer
+                        example: 10
+                      samples:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                              example: "123e4567-e89b-12d3-a456-426614174000"
+                            applicant_name:
+                              type: string
+                              example: "Juan Pérez"
+                            sample_type:
+                              type: string
+                              example: "Sangre"
+                            createdAt:
+                              type: string
+                              format: date-time
+                              example: "2024-12-10T10:00:00Z"
+        '404':
+          description: No se encontraron muestras.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "No se encontraron muestras."
+        '500':
+          description: Error interno del servidor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Error interno del servidor."
+  /sample/get-by-id/{id}:
+    get:
+      tags:
+      - Samples
+      summary: Obtener muestra por ID
+      description: |
+        Esta ruta permite obtener una muestra específica por su ID. Si la muestra no se encuentra, se devuelve un mensaje de error.
+
+        **Códigos de estado:**
+        - **200**: Muestra obtenida exitosamente.
+        - **404**: Muestra no encontrada.
+        - **500**: Error interno del servidor al obtener la muestra.
+
+      operationId: getSampleById
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: ID de la muestra a obtener.
+        schema:
+          type: string
+        example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Muestra obtenida exitosamente.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Muestra obtenida exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        example: "123e4567-e89b-12d3-a456-426614174000"
+                      applicant_name:
+                        type: string
+                        example: "Juan Pérez"
+                      sample_type:
+                        type: string
+                        example: "Sangre"
+                      createdAt:
+                        type: string
+                        format: date-time
+                        example: "2024-12-10T10:00:00Z"
+        '404':
+          description: Muestra no encontrada.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Muestra no encontrada."
+        '500':
+          description: Error interno del servidor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Error al obtener la muestra."
+  /sample/create:
+    post:
+      tags:
+      - Samples
+      summary: Crear una nueva muestra
+      description: |
+        Esta ruta permite crear una nueva muestra en el sistema. Antes de la creación, se valida que no exista una muestra con el mismo código. En caso de éxito, se devuelve la muestra creada.
+
+        **Códigos de estado:**
+        - **201**: Muestra creada exitosamente.
+        - **400**: El código de la muestra ya existe o hay error en la validación.
+        - **500**: Error interno del servidor al crear la muestra.
+
+      operationId: createSample
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+              - applicant_name
+              - identification_card
+              - phone
+              - email
+              - address
+              - sample_code
+              - sample_name
+              - container
+              - state
+              - type
+              - report_number
+              properties:
+                applicant_name:
+                  type: string
+                  description: Nombre del solicitante de la muestra.
+                  example: "Peipo Pérez"
+                identification_card:
+                  type: string
+                  description: Número de cédula de identidad del solicitante.
+                  example: "1234567890"
+                phone:
+                  type: string
+                  description: Teléfono de contacto del solicitante.
+                  example: "5551234567"
+                email:
+                  type: string
+                  description: Correo electrónico del solicitante.
+                  example: "juan.perez@example.com"
+                address:
+                  type: string
+                  description: Dirección del solicitante.
+                  example: "Calle Ficticia 123, Ciudad, País"
+                sample_code:
+                  type: string
+                  description: Código único para identificar la muestra.
+                  example: "SMP-54321"
+                sample_name:
+                  type: string
+                  description: Nombre o descripción de la muestra.
+                  example: "Muestra de Agua"
+                container:
+                  type: string
+                  description: Tipo de recipiente de la muestra.
+                  example: "Botella plástica"
+                state:
+                  type: string
+                  description: Estado físico de la muestra.
+                  example: "liquid"
+                type:
+                  type: string
+                  description: Tipo de muestra.
+                  example: "thesis"
+                report_number:
+                  type: string
+                  description: Número de informe asociado con la muestra.
+                  example: "REP-20241207"
+          application/json:
+            schema:
+              type: object
+              required:
+              - applicant_name
+              - identification_card
+              - phone
+              - email
+              - address
+              - sample_code
+              - sample_name
+              - container
+              - state
+              - type
+              - report_number
+              properties:
+                applicant_name:
+                  type: string
+                  description: Nombre del solicitante de la muestra.
+                  example: "Peipo Pérez"
+                identification_card:
+                  type: string
+                  description: Número de cédula de identidad del solicitante.
+                  example: "1234567890"
+                phone:
+                  type: string
+                  description: Teléfono de contacto del solicitante.
+                  example: "5551234567"
+                email:
+                  type: string
+                  description: Correo electrónico del solicitante.
+                  example: "juan.perez@example.com"
+                address:
+                  type: string
+                  description: Dirección del solicitante.
+                  example: "Calle Ficticia 123, Ciudad, País"
+                sample_code:
+                  type: string
+                  description: Código único para identificar la muestra.
+                  example: "SMP-54321"
+                sample_name:
+                  type: string
+                  description: Nombre o descripción de la muestra.
+                  example: "Muestra de Agua"
+                container:
+                  type: string
+                  description: Tipo de recipiente de la muestra.
+                  example: "Botella plástica"
+                state:
+                  type: string
+                  description: Estado físico de la muestra.
+                  example: "liquid"
+                type:
+                  type: string
+                  description: Tipo de muestra.
+                  example: "thesis"
+                report_number:
+                  type: string
+                  description: Número de informe asociado con la muestra.
+                  example: "REP-20241207"
+      responses:
+        '201':
+          description: Muestra creada exitosamente.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Muestra creada exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        example: "123e4567-e89b-12d3-a456-426614174000"
+                      applicant_name:
+                        type: string
+                        example: "Peipo Pérez"
+                      identification_card:
+                        type: string
+                        example: "1234567890"
+                      phone:
+                        type: string
+                        example: "5551234567"
+                      email:
+                        type: string
+                        example: "juan.perez@example.com"
+                      address:
+                        type: string
+                        example: "Calle Ficticia 123, Ciudad, País"
+                      sample_code:
+                        type: string
+                        example: "SMP-54321"
+                      sample_name:
+                        type: string
+                        example: "Muestra de Agua"
+                      container:
+                        type: string
+                        example: "Botella plástica"
+                      state:
+                        type: string
+                        example: "liquid"
+                      type:
+                        type: string
+                        example: "thesis"
+                      report_number:
+                        type: string
+                        example: "REP-20241207"
+        '400':
+          description: El código de la muestra ya existe o hay error en la validación.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Ya existe una muestra con el mismo código."
+        '500':
+          description: Error interno del servidor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Error al crear la muestra."
+  /sample/update/{id}:
+    put:
+      tags:
+      - Samples
+      summary: Actualizar una muestra existente
+      description: |
+        Esta ruta permite actualizar una muestra existente en el sistema. Primero, se verifica que la muestra exista y que no haya otro registro con el mismo código. Si se cumple la validación, la muestra se actualiza y se devuelve el registro actualizado.
+
+        **Códigos de estado:**
+        - **200**: Muestra actualizada exitosamente.
+        - **400**: El código de la muestra ya existe o hay error en la validación.
+        - **404**: La muestra no fue encontrada.
+        - **500**: Error interno del servidor al actualizar la muestra.
+
+      operationId: updateSample
+      parameters:
+      - name: id
+        in: path
+        required: true
+        description: El ID de la muestra a actualizar.
+        schema:
+          type: string
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required:
+              - applicant_name
+              - identification_card
+              - phone
+              - email
+              - address
+              - sample_code
+              - sample_name
+              - container
+              - state
+              - type
+              - report_number
+              properties:
+                applicant_name:
+                  type: string
+                  description: Nombre del solicitante de la muestra.
+                  example: "Peipo Pérez"
+                identification_card:
+                  type: string
+                  description: Número de cédula de identidad del solicitante.
+                  example: "1234567890"
+                phone:
+                  type: string
+                  description: Teléfono de contacto del solicitante.
+                  example: "5551234567"
+                email:
+                  type: string
+                  description: Correo electrónico del solicitante.
+                  example: "juan.perez@example.com"
+                address:
+                  type: string
+                  description: Dirección del solicitante.
+                  example: "Calle Ficticia 123, Ciudad, País"
+                sample_code:
+                  type: string
+                  description: Código único para identificar la muestra.
+                  example: "SMP-54321"
+                sample_name:
+                  type: string
+                  description: Nombre o descripción de la muestra.
+                  example: "Muestra de Agua"
+                container:
+                  type: string
+                  description: Tipo de recipiente de la muestra.
+                  example: "Botella plástica"
+                state:
+                  type: string
+                  description: Estado físico de la muestra.
+                  example: "liquid"
+                type:
+                  type: string
+                  description: Tipo de muestra.
+                  example: "thesis"
+                report_number:
+                  type: string
+                  description: Número de informe asociado con la muestra.
+                  example: "REP-20241207"
+          application/json:
+            schema:
+              type: object
+              required:
+              - applicant_name
+              - identification_card
+              - phone
+              - email
+              - address
+              - sample_code
+              - sample_name
+              - container
+              - state
+              - type
+              - report_number
+              properties:
+                applicant_name:
+                  type: string
+                  description: Nombre del solicitante de la muestra.
+                  example: "Peipo Pérez"
+                identification_card:
+                  type: string
+                  description: Número de cédula de identidad del solicitante.
+                  example: "1234567890"
+                phone:
+                  type: string
+                  description: Teléfono de contacto del solicitante.
+                  example: "5551234567"
+                email:
+                  type: string
+                  description: Correo electrónico del solicitante.
+                  example: "juan.perez@example.com"
+                address:
+                  type: string
+                  description: Dirección del solicitante.
+                  example: "Calle Ficticia 123, Ciudad, País"
+                sample_code:
+                  type: string
+                  description: Código único para identificar la muestra.
+                  example: "SMP-54321"
+                sample_name:
+                  type: string
+                  description: Nombre o descripción de la muestra.
+                  example: "Muestra de Agua"
+                container:
+                  type: string
+                  description: Tipo de recipiente de la muestra.
+                  example: "Botella plástica"
+                state:
+                  type: string
+                  description: Estado físico de la muestra.
+                  example: "liquid"
+                type:
+                  type: string
+                  description: Tipo de muestra.
+                  example: "thesis"
+                report_number:
+                  type: string
+                  description: Número de informe asociado con la muestra.
+                  example: "REP-20241207"
+      responses:
+        '200':
+          description: Muestra actualizada exitosamente.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Muestra actualizada exitosamente."
+                  data:
+                    type: object
+                    properties:
+                      id_sample:
+                        type: string
+                        example: "123e4567-e89b-12d3-a456-426614174000"
+                      applicant_name:
+                        type: string
+                        example: "Peipo Pérez"
+                      identification_card:
+                        type: string
+                        example: "1234567890"
+                      phone:
+                        type: string
+                        example: "5551234567"
+                      email:
+                        type: string
+                        example: "juan.perez@example.com"
+                      address:
+                        type: string
+                        example: "Calle Ficticia 123, Ciudad, País"
+                      sample_code:
+                        type: string
+                        example: "SMP-54321"
+                      sample_name:
+                        type: string
+                        example: "Muestra de Agua"
+                      container:
+                        type: string
+                        example: "Botella plástica"
+                      state:
+                        type: string
+                        example: "liquid"
+                      type:
+                        type: string
+                        example: "thesis"
+                      report_number:
+                        type: string
+                        example: "REP-20241207"
+        '400':
+          description: El código de la muestra ya existe o hay error en la validación.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Ya existe otra muestra con este código."
+        '404':
+          description: La muestra no fue encontrada.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Muestra no encontrada."
+        '500':
+          description: Error interno del servidor.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Error al actualizar la muestra."
+  /sample/report/pdf:
+    get:
+      tags:
+      - Samples
+      summary: Generar un reporte en PDF de muestras/reactivos
+      description: |
+        Esta ruta permite generar un reporte en formato PDF con información sobre las muestras (reactivos) dentro de un rango de fechas especificado. Si no se proporcionan fechas, se toma el mes actual.
+
+        **Códigos de estado:**
+        - **200**: Reporte PDF generado exitosamente.
+        - **404**: No se encontraron registros para generar el reporte.
+        - **500**: Error interno al generar el reporte.
+
+      operationId: generatePdfReport
+      parameters:
+      - name: startDate
+        in: query
+        description: La fecha de inicio del rango (formato YYYY-MM-DD).
+        required: false
+        schema:
+          type: string
+          example: "2024-01-01"
+      - name: endDate
+        in: query
+        description: La fecha de fin del rango (formato YYYY-MM-DD).
+        required: false
+        schema:
+          type: string
+          example: "2024-12-31"
+      responses:
+        '200':
+          description: Reporte PDF generado exitosamente.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+                example: "/path/to/generated-report.pdf"
+        '404':
+          description: No se encontraron registros de muestras para generar el reporte.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "No se encontraron registros de muestras para generar el reporte."
+        '500':
+          description: Error interno al generar el reporte.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Error al generar el reporte PDF de reactivos."
+  # PAYMENT
+  /payment/all:
+    get:
+      tags:
+      - Payments
+      summary: Obtener todos los pagos con paginación
+      description: |
+        Esta ruta permite obtener una lista paginada de pagos. Permite filtrar los pagos por el código de factura (`code_bill`). Si no se proporciona el código de factura, se devuelven todos los pagos.
+
+        **Códigos de estado:**
+        - **200**: Pagos obtenidos exitosamente.
+        - **404**: No se encontraron pagos.
+        - **500**: Error interno al obtener los pagos.
+
+      operationId: getAllPayment
+      parameters:
+      - name: page
+        in: query
+        description: El número de página para paginación (por defecto 1).
+        required: false
+        schema:
+          type: integer
+          default: 1
+          example: 1
+      - name: limit
+        in: query
+        description: La cantidad de registros por página (por defecto 10).
+        required: false
+        schema:
+          type: integer
+          default: 10
+          example: 10
+      - name: code_bill
+        in: query
+        description: El código de la factura para filtrar los pagos (opcional).
+        required: false
+        schema:
+          type: string
+          example: "BILL-12345"
+      responses:
+        '200':
+          description: Pagos obtenidos exitosamente.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalRecords:
+                    type: integer
+                    example: 100
+                  totalPages:
+                    type: integer
+                    example: 10
+                  currentPage:
+                    type: integer
+                    example: 1
+                  recordsPerPage:
+                    type: integer
+                    example: 10
+                  payments:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                          example: 1
+                        code_bill:
+                          type: string
+                          example: "BILL-12345"
+                        amount:
+                          type: number
+                          format: float
+                          example: 100.50
+                        payment_date:
+                          type: string
+                          format: date-time
+                          example: "2024-12-10T10:00:00Z"
+        '404':
+          description: No se encontraron pagos.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "No se encontraron pagos."
+        '500':
+          description: Error interno al obtener los pagos.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Error al obtener los pagos."
+  /payment/get-by-id/{id}:
+    get:
+      tags:
+      - Payments
+      summary: Obtener un pago por su ID
+      description: |
+        Esta ruta permite obtener un pago específico utilizando su ID. Si el pago no existe, se devolverá un error 404.
+
+        **Códigos de estado:**
+        - **200**: Pago obtenido exitosamente.
+        - **404**: Pago no encontrado.
+        - **500**: Error interno al obtener el pago.
+
+      operationId: getPaymentById
+      parameters:
+      - name: id
+        in: path
+        description: El ID del pago que se desea obtener.
+        required: true
+        schema:
+          type: integer
+          example: 1
+      responses:
+        '200':
+          description: Pago obtenido exitosamente.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  code_bill:
+                    type: string
+                    example: "BILL-12345"
+                  amount:
+                    type: number
+                    format: float
+                    example: 100.50
+                  payment_date:
+                    type: string
+                    format: date-time
+                    example: "2024-12-10T10:00:00Z"
+        '404':
+          description: Pago no encontrado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Pago no encontrado."
+        '500':
+          description: Error interno al obtener el pago.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Error al obtener el pago."
+  /payment/create:
+    post:
+      tags:
+      - Payments
+      summary: Crear un nuevo pago
+      description: |
+        Esta ruta permite crear un nuevo pago en el sistema. Se valida que el `code_bill` no exista previamente y que los datos sean correctos mediante un esquema de validación utilizando `zod`.
+
+        **Códigos de estado:**
+        - **201**: Pago creado exitosamente.
+        - **400**: Los datos enviados son inválidos o ya existe un pago con el mismo código de factura.
+        - **500**: Error interno al crear el pago.
+
+      operationId: createPayment
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              required:
+              - id_access_lab_fk
+              - code_bill
+              - amount_paid
+              - status
+              - unit
+              - payment_date
+              type: object
+              properties:
+                id_access_lab_fk:
+                  type: string
+                  format: uuid
+                  example: "123e4567-e89b-12d3-a456-426614174000"
+                code_bill:
+                  type: string
+                  minLength: 3
+                  maxLength: 255
+                  example: "BILL-20241210"
+                amount_paid:
+                  type: number
+                  minimum: 0
+                  example: 100.50
+                status:
+                  type: string
+                payment_date:
+                  type: string
+                  format: date-time
+                  example: "2024-12-10T10:00:00Z"
+          application/json:
+            schema:
+              type: object
+              properties:
+                id_access_lab_fk:
+                  type: string
+                  format: uuid
+                  example: "123e4567-e89b-12d3-a456-426614174000"
+                  description: "El ID del laboratorio (UUID)."
+                code_bill:
+                  type: string
+                  minLength: 3
+                  maxLength: 255
+                  example: "BILL-20241210"
+                  description: "El código de la factura (mínimo 3 caracteres, máximo 255)."
+                amount_paid:
+                  type: number
+                  minimum: 0
+                  example: 100.50
+                  description: "El monto pagado (número positivo o cero)."
+                status:
+                  type: string
+                  enum:
+                  - PAYMENT_PENDING
+                  - PAYMENT_APPROVED
+                  - PAYMENT_REJECTED
+                  - PAYMENT_CANCELED
+                  description: "El estado del pago (opcional)."
+                  example: "PAYMENT_APPROVED"
+                payment_date:
+                  type: string
+                  format: date-time
+                  description: "La fecha de pago (opcional)."
+                  example: "2024-12-10T10:00:00Z"
+      responses:
+        '201':
+          description: Pago creado exitosamente.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                    example: 1
+                  code_bill:
+                    type: string
+                    example: "BILL-20241210"
+                  amount_paid:
+                    type: number
+                    format: float
+                    example: 100.50
+                  status:
+                    type: string
+                    example: "PAYMENT_APPROVED"
+                  payment_date:
+                    type: string
+                    format: date-time
+                    example: "2024-12-10T10:00:00Z"
+        '400':
+          description: Los datos enviados son inválidos o ya existe un pago con el mismo código de factura.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Ya existe un pago con el mismo código."
+        '500':
+          description: Error interno al crear el pago.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Error al crear el pago."
+  /payment/report/pdf:
+    get:
+      tags:
+      - Payments
+      summary: Generate a PDF report of payments
+      description: |
+        This endpoint generates a PDF report for payments within a specified date range. If no date range is provided, it will use the current month's data.
+
+        **Códigos de estado:**
+        - **200**: Reporte generado exitosamente.
+        - **400**: Parámetros de consulta incorrectos.
+        - **404**: No se encontraron registros de pagos para generar el reporte.
+        - **500**: Error interno al generar el reporte.
+
+      operationId: generatePdfReport
+      parameters:
+      - name: startDate
+        in: query
+        description: "Fecha de inicio del rango de fechas para el reporte (formato: YYYY-MM-DD)."
+        required: false
+        schema:
+          type: string
+          format: date
+          example: "2024-12-01"
+      - name: endDate
+        in: query
+        description: "Fecha de fin del rango de fechas para el reporte (formato: YYYY-MM-DD)."
+        required: false
+        schema:
+          type: string
+          format: date
+          example: "2024-12-10"
+      responses:
+        '200':
+          description: Reporte generado exitosamente.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Parámetros de consulta incorrectos.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Los parámetros de consulta no son válidos."
+        '404':
+          description: No se encontraron registros de pagos para generar el reporte.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "No se encontraron registros de pagos para generar el reporte."
+        '500':
+          description: Error interno al generar el reporte.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Error al generar el reporte PDF de reactivos."

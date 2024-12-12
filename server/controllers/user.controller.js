@@ -5,26 +5,26 @@ import { logEvent } from '../helpers/log.helper.js'
 import { hashPassword } from '../helpers/bcrypt.helper.js'
 import { GenericCrudModel } from '../models/crud.model.js'
 import { user_schema } from '../validators/user.validator.js'
-import { KEY_REDIS_USER, TIME_KEY_VALID } from '../const/redis_keys.const.js'
 import { createRedisClient } from '../config/redis.config.js'
 import { send_email_with_info_sigup } from '../libs/mailer.lib.js'
 import { sendResponse } from '../helpers/response_handler.helper.js'
 import { user_password_schema } from '../validators/user.validator.js'
 import {
-	laboratory_Schema,
 	rol_Schema,
-	user_role_main_Schema,
-	user_roles_Schema,
 	user_Schema,
+	laboratory_Schema,
+	user_roles_Schema,
+	user_role_main_Schema,
 } from '../schema/schemes.js'
+import { KEY_REDIS_USER, TIME_KEY_VALID } from '../const/redis_keys.const.js'
 import { PAGINATION_LIMIT, PAGINATION_PAGE } from '../const/pagination.const.js'
 
 const userController = {
 	async getAllUsers(req, res) {
 		const redisClient = createRedisClient()
-		const { page = PAGINATION_PAGE, limit = PAGINATION_LIMIT, full_name = '' } = req.query
+		const { page = PAGINATION_PAGE, limit = PAGINATION_LIMIT, full_name = '', identification_card = '' } = req.query
 		const offset = (page - 1) * limit
-		const cacheKey = `cache:${KEY_REDIS_USER}:page:${page}:limit:${limit}:full_name:${full_name}`
+		const cacheKey = `cache:${KEY_REDIS_USER}:page:${page}:limit:${limit}:full_name:${full_name}:identification_card:${identification_card}`
 
 		try {
 			const cachedData = await redisClient.get(cacheKey)
@@ -34,15 +34,19 @@ const userController = {
 			}
 
 			const { count, rows } = await user_Schema.findAndCountAll({
+				attributes: { exclude: ['password'] },
 				include: [
 					{
 						model: user_role_main_Schema,
+						attributes: { exclude: ['createdAt', 'updatedAt'] },
 						include: [
 							{
 								model: user_roles_Schema,
+								attributes: { exclude: ['createdAt', 'updatedAt', 'id_user_role_intermediate_fk'] },
 								include: [
 									{
 										model: rol_Schema,
+										attributes: { exclude: ['createdAt', 'updatedAt'] },
 									},
 								],
 							},
@@ -51,10 +55,12 @@ const userController = {
 				],
 				where: {
 					...(full_name && { full_name: { [Op.iLike]: `%${full_name}%` } }),
+					...(identification_card && { identification_card: { [Op.iLike]: `%${identification_card}%` } }),
 				},
 				limit: limit,
 				offset: offset,
 				subQuery: false,
+				distinct: true, //FIXME: Esto asegura que los reactivos no se cuenten más de una vez
 				order: [['createdAt', 'DESC']],
 			})
 
@@ -65,30 +71,7 @@ const userController = {
 				totalPages: Math.ceil(count / limit),
 				currentPage: parseInt(page, 10),
 				recordsPerPage: parseInt(limit, 10),
-				users: rows.map(user => ({
-					id_user: user.id_user,
-					active: user.active,
-					full_name: user.full_name,
-					email: user.email,
-					phone: user.phone,
-					identification_card: user.identification_card,
-					code: user.code,
-					createdAt: user.createdAt,
-					updatedAt: user.updatedAt,
-					user_roles_intermediate: {
-						id_user_role_intermediate: user.user_roles_intermediate.id_user_role_intermediate,
-						id_user_fk: user.user_roles_intermediate.id_user_fk,
-						user_roles: user.user_roles_intermediate.user_roles.map(userRole => ({
-							id_user_roles: userRole.id_user_roles,
-							id_user_role_intermediate_fk: userRole.id_user_role_intermediate_fk,
-							id_rol_fk: userRole.id_rol_fk,
-							role: {
-								id_rol: userRole.role.id_rol,
-								type_rol: userRole.role.type_rol,
-							},
-						})),
-					},
-				})),
+				users: rows,
 			}
 
 			await redisClient.set(cacheKey, JSON.stringify(responseData), 'EX', TIME_KEY_VALID)
@@ -114,6 +97,23 @@ const userController = {
 			messageNotFound: 'Usuario no encontrado.',
 			messageError: 'Error la obtener el usuario.',
 		})
+	},
+
+	async getMeUser(req, res) {
+		try {
+			const userFound = await user_Schema.findByPk(req.user.id)
+			if (!userFound) return sendResponse(res, 404, 'Usuario no encontrado.')
+			return sendResponse(res, 200, 'Usuario obtendio exitosamente.', userFound)
+		} catch (error) {
+			await logEvent(
+				'error',
+				'Error al obtenre el usuario.',
+				{ error: error.message, stack: error.stack },
+				req.user.id,
+				req
+			)
+			return sendResponse(res, 500)
+		}
 	},
 
 	async createUser(req, res) {
@@ -185,11 +185,9 @@ const userController = {
 			const { id } = req.params
 			const { id_rol_fk, email, phone, identification_card } = req.body
 
-			// Find the user by ID
 			const user_found = await user_Schema.findByPk(id)
 			if (!user_found) return sendResponse(res, 404, 'Usuario no encontrado')
 
-			// Validate the role
 			const role_exis = await rol_Schema.findByPk(id_rol_fk)
 			if (!role_exis) return sendResponse(res, 404, 'Rol no encontrado')
 
