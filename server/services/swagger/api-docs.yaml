@@ -4,9 +4,9 @@ info:
   description: API para el Sistema de Gestión de Laboratorios (SGL). Este sistema está diseñado para facilitar la gestión de equipos, usuarios, reservas, y mantenimiento de laboratorios.
   version: 1.0.0
   contact:
-    name: Angelo G
-    email: angelogarcia2021@@gmail.com
-    url: https://wa.me/593982718318
+    name: Cosme S
+    email: cosmeS@@gmail.com
+    url: https://wa.me/
 servers:
 - url: http://localhost:3000/api
   description: API local
@@ -1046,7 +1046,7 @@ paths:
                   message:
                     type: string
                     example: "¡Ops! Ha ocurrido un error. Por favor, inténtalo de nuevo."
-  /user/update-info/{id }:
+  /user/update-info/{id}:
     put:
       summary: "Actualizar un usuario"
       description: |
@@ -1335,7 +1335,7 @@ paths:
                   message:
                     type: string
                     example: "¡Ops! Ha ocurrido un error al actualizar la contraseña. Por favor, inténtalo de nuevo."
-  /user/delete/{ id}:
+  /user/delete/{id}:
     delete:
       summary: "Eliminar un usuario"
       description: |
