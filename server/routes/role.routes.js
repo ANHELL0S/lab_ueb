@@ -6,7 +6,7 @@ import { roleController } from '../controllers/role.controller.js'
 
 const router = Router()
 
-router.get('/', Auth, roleController.getAllRoleUsers)
+router.get('/all', Auth, roleController.getAllRoleUsers)
 router.get('/:id', Auth, roleController.getRoleById)
 
 export default router

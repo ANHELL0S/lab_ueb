@@ -258,18 +258,14 @@ class GenericCrudModel {
 		const redisClient = createRedisClient()
 
 		try {
-			// Buscar el registro por su ID
 			const record = await model.findByPk(id_params, { transaction: t })
 			if (!record) return sendResponse(res, 404, `${messageNotFound}`)
 
-			// Actualizar el registro en la base de datos
 			await record.update(data, { transaction: t })
 
-			// Buscar y eliminar claves específicas relacionadas (páginas, etc.)
 			const cacheKeys = await redisClient.keys(`cache:${keyRedis}:page:*`)
 			if (cacheKeys.length > 0) {
-				await redisClient.del(...cacheKeys) // Elimina todas las claves relacionadas
-				//console.log(`>> Caché de páginas invalidado para el modelo: ${keyRedis}`)
+				await redisClient.del(...cacheKeys)
 			}
 
 			await logEvent('info', `${messageSuccess}`, { updatedRecord: record }, user_id, req)

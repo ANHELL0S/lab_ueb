@@ -10,7 +10,6 @@ const userSeeder = async () => {
 		const existingUsers = await user_Schema.findAll()
 		if (existingUsers.length > 0) {
 			console.log('Seeder -> Usuarios ya existen el Seeder no se ejecuta.')
-
 			return
 		}
 

@@ -1,5 +1,4 @@
 const TIME_KEY_VALID = 3600
-// Keys generals
 const KEY_REDIS_LAB = 'lab'
 const KEY_REDIS_USER = 'user'
 const KEY_REDIS_ROLE = 'role'

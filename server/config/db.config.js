@@ -21,6 +21,7 @@ const db_main = new Sequelize(
 			acquire: 30000, // Wait time to acquire a connection
 			idle: 10000, // Close inactive connections
 		},
+		/*
 		...(isProduction() && {
 			dialectOptions: {
 				ssl: {
@@ -29,6 +30,7 @@ const db_main = new Sequelize(
 				},
 			},
 		}),
+		*/
 	}
 )
 

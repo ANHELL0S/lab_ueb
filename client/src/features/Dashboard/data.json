@@ -1,0 +1,38 @@
+[
+	{
+		"mascota": {
+			"nombre": "Juan Perez",
+			"especie": "Pendiente",
+			"raza": "Analisis de bacterias en agua estancada"
+		},
+		"visita": {
+			"fecha": "2024-11-27",
+			"hora": "5:00 PM",
+			"descripcion": "Acceso a laboratorio"
+		}
+	},
+	{
+		"mascota": {
+			"nombre": "Tor Lores",
+			"especie": "Pendiente",
+			"raza": "Analisis de bacterias en agua estancada"
+		},
+		"visita": {
+			"fecha": "2024-11-27",
+			"hora": "5:00 PM",
+			"descripcion": "Acceso a laboratorio"
+		}
+	},
+	{
+		"mascota": {
+			"nombre": "David Lopez",
+			"especie": "Pendiente",
+			"raza": "Analisis de bacterias en agua estancada"
+		},
+		"visita": {
+			"fecha": "2024-11-27",
+			"hora": "5:00 PM",
+			"descripcion": "Acceso a laboratorio"
+		}
+	}
+]

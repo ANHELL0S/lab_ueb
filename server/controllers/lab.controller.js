@@ -7,7 +7,7 @@ import {
 	user_role_main_Schema,
 	laboratory_analyst_Schema,
 } from '../schema/schemes.js'
-import { Op } from 'sequelize'
+import { Op, Sequelize } from 'sequelize'
 import moment from 'moment-timezone'
 import { db_main } from '../config/db.config.js'
 import { logEvent } from '../helpers/log.helper.js'
@@ -23,9 +23,9 @@ import { PAGINATION_LIMIT, PAGINATION_PAGE } from '../const/pagination.const.js'
 const labController = {
 	async getAllLabs(req, res) {
 		const redisClient = createRedisClient()
-		const { page = PAGINATION_PAGE, limit = PAGINATION_LIMIT } = req.query
+		const { page = PAGINATION_PAGE, limit = PAGINATION_LIMIT, search = '' } = req.query
 		const offset = (page - 1) * limit
-		const cacheKey = `cache:${KEY_REDIS_LAB}:page:${page}:limit:${limit}`
+		const cacheKey = `cache:${KEY_REDIS_LAB}:page:${page}:limit:${limit}:search:${search}`
 
 		try {
 			const cachedData = await redisClient.get(cacheKey)
@@ -34,12 +34,26 @@ const labController = {
 				return sendResponse(res, 200, 'Laboratorios obtenidos exitosamente.', parsedData)
 			}
 
-			const { count, rows } = await laboratory_Schema.findAndCountAll({
+			const whereCondition = search
+				? Sequelize.literal(`concat("name", "description", "location") ILIKE '%${search}%'`)
+				: {}
+
+			const countQuery = await laboratory_Schema.count({
+				where: whereCondition,
+			})
+
+			const { rows } = await laboratory_Schema.findAndCountAll({
 				include: [
 					{
 						model: laboratory_analyst_Schema,
+						include: [
+							{
+								model: user_Schema,
+							},
+						],
 					},
 				],
+				where: whereCondition,
 				limit: limit,
 				offset: offset,
 				subQuery: false,
@@ -47,11 +61,11 @@ const labController = {
 				order: [['createdAt', 'DESC']],
 			})
 
-			if (rows.length === 0) return sendResponse(res, 404, 'No se encontraron laboratorios.')
+			if (rows.length === 0 || rows.length === null) return sendResponse(res, 200, 'No se encontraron laboratorios.')
 
 			const responseData = {
-				totalRecords: count,
-				totalPages: Math.ceil(count / limit),
+				totalRecords: countQuery,
+				totalPages: countQuery > 0 ? Math.ceil(countQuery / limit) : 1,
 				currentPage: parseInt(page, 10),
 				recordsPerPage: parseInt(limit, 10),
 				labs: rows,
@@ -61,6 +75,7 @@ const labController = {
 
 			return sendResponse(res, 200, 'Laboratorios obtenidos exitosamente.', responseData)
 		} catch (error) {
+			console.log(error)
 			await logEvent('error', 'Error al obtener laboratorios.', { error: error.message, stack: error.stack }, null, req)
 			return sendResponse(res, 500)
 		} finally {
@@ -86,36 +101,12 @@ const labController = {
 		const t = await db_main.transaction()
 		const redisClient = createRedisClient()
 
-		const { user } = req
-		const { name, id_analyst_fk } = req.body
-
 		try {
 			const parsedData = lab_zod.safeParse(req.body)
 			if (!parsedData.success) return sendResponse(res, 400, parsedData.error.errors[0].message)
 
-			const existing_name_lab = await laboratory_Schema.findOne({ where: { name: name } })
+			const existing_name_lab = await laboratory_Schema.findOne({ where: { name: req.body.name } })
 			if (existing_name_lab) return sendResponse(res, 400, 'Ya existe un laboratorio con el mismo nombre.')
-
-			const existingUser = await user_Schema.findByPk(id_analyst_fk)
-			if (!existingUser || !existingUser.active) return sendResponse(res, 404, 'El usuario no existe o no disponible.')
-
-			const userRoleMain = await user_role_main_Schema.findOne({
-				where: { id_user_fk: id_analyst_fk },
-			})
-			if (!userRoleMain) return sendResponse(res, 400, 'El usuario no tiene roles asignados.')
-
-			const hasSupervisorRole = await user_roles_Schema.findOne({
-				where: {
-					id_user_role_intermediate_fk: userRoleMain.id_user_role_intermediate,
-				},
-				include: [
-					{
-						model: rol_Schema,
-						where: { type_rol: TECHNICAL_ANALYST },
-					},
-				],
-			})
-			if (!hasSupervisorRole) return sendResponse(res, 400, 'El usuario no tiene el rol de analista asignado.')
 
 			const labData = {
 				...req.body,
@@ -128,18 +119,45 @@ const labController = {
 			const cacheKeys = await redisClient.keys(`cache:${KEY_REDIS_LAB}:page:*`)
 			if (cacheKeys.length > 0) await redisClient.del(...cacheKeys)
 
-			await logEvent('info', 'Laboratorio creado exitosamente.', { newLab }, user.id, req)
+			await logEvent('info', 'Laboratorio creado exitosamente.', { newLab }, req.user.id, req)
 			return sendResponse(res, 201, 'Laboratorio creado exitosamente.', newLab)
 		} catch (error) {
 			await logEvent(
 				'error',
 				'Error al crear el laboratorio.',
 				{ error: error.message, stack: error.stack },
-				user.id,
+				req.user.id,
 				req
 			)
 			await t.rollback()
 			return sendResponse(res, 500)
+		}
+	},
+
+	async changeStatusLab(req, res) {
+		try {
+			const labFound = await laboratory_Schema.findByPk(req.params.id)
+			if (!labFound) return sendResponse(res, 404, 'Laboratorio no encontrado.')
+
+			const labData = {
+				active: !labFound.active,
+			}
+
+			await GenericCrudModel.updateRecord({
+				keyRedis: KEY_REDIS_LAB,
+				model: laboratory_Schema,
+				data: labData,
+				id_params: req.params.id,
+				user_id: req.user.id,
+				transaction_db_name: db_main,
+				req,
+				res,
+				messageSuccess: 'Cambio de estado actualizado exitosamente.',
+				messageNotFound: 'Laboratorio no encontrado.',
+				messageError: 'Error al cambiar el estado del laboratorio.',
+			})
+		} catch (error) {
+			sendResponse(res, 500)
 		}
 	},
 
@@ -191,12 +209,12 @@ const labController = {
 			const cacheKeys = await redisClient.keys(`cache:${KEY_REDIS_LAB}:page:*`)
 			if (cacheKeys.length > 0) await redisClient.del(...cacheKeys)
 
-			await logEvent('info', 'Laboratorio creado exitosamente.', { newLab }, user.id, req)
-			return sendResponse(res, 201, 'Laboratorio creado exitosamente.', newLab)
+			await logEvent('info', 'Analista asignado exitosamente.', { newLab }, user.id, req)
+			return sendResponse(res, 201, 'Analista asignado exitosamente.', newLab)
 		} catch (error) {
 			await logEvent(
 				'error',
-				'Error al crear el laboratorio.',
+				'Error al asignado analista al laboratorio.',
 				{ error: error.message, stack: error.stack },
 				user.id,
 				req
@@ -251,8 +269,8 @@ const labController = {
 
 		const labFound = await laboratory_Schema.findByPk(id)
 		if (!labFound) return sendResponse(res, 200, 'Laboratorio no encontrado.')
-		const labInUse = await laboratory_analyst_Schema.findOne({ where: { id_laboratory_analysts: labFound.id_lab } })
-		if (labInUse) return sendResponse(res, 400, 'El laboratorio esta en funcionamiento.')
+		const labInUse = await laboratory_analyst_Schema.findOne({ where: { id_lab_fk: labFound.id_lab } })
+		if (labInUse) return sendResponse(res, 400, 'El laboratorio a cargo de un analista.')
 
 		await GenericCrudModel.deleteRecord({
 			keyRedis: KEY_REDIS_LAB,

@@ -1,7 +1,6 @@
 import fs from 'fs'
 import path from 'path'
 import PDFDocument from 'pdfkit-table'
-import { formattedDate } from '../helpers/date.helper.js'
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname)
 
@@ -17,13 +16,11 @@ async function generatePdfTable({ title, header, title_rows, rows, filename, ins
 	const logoPath = path.join(__dirname, '../assets/images/UEB.png')
 
 	try {
-		// Insertar el logotipo
 		if (fs.existsSync(logoPath)) {
 			doc.image(logoPath, { width: 160, align: 'left' })
 			doc.moveDown(4.5)
 		}
 
-		// Datos de la institución
 		if (institutionData) {
 			doc.fontSize(12).text(institutionData.name, { align: 'left' })
 			doc.moveDown(0.5)
@@ -33,17 +30,14 @@ async function generatePdfTable({ title, header, title_rows, rows, filename, ins
 			doc.moveDown(2)
 		}
 
-		// Línea separadora
 		doc.moveTo(30, doc.y).lineTo(550, doc.y).stroke()
 		doc.moveDown(2)
 
-		// Título del reporte
 		if (title) {
 			doc.fontSize(15).text(`${title}`, { align: 'left' })
 			doc.moveDown(0.8)
 		}
 
-		// Datos del encabezado dinámico
 		if (header) {
 			Object.entries(header).forEach(([key, value]) => {
 				doc.fontSize(10).text(`${value}`, { align: 'left' })
@@ -52,7 +46,6 @@ async function generatePdfTable({ title, header, title_rows, rows, filename, ins
 			doc.moveDown(1.5)
 		}
 
-		// Generar tabla
 		const table = {
 			headers: title_rows,
 			rows,

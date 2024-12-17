@@ -7,12 +7,14 @@ import { limiterRequest } from '../middlewares/rateLimit.middleware.js'
 
 const router = Router()
 
-router.get('/all', userController.getAllUsers)
+router.get('/all', Auth, userController.getAllUsers)
 router.get('/me', Auth, userController.getMeUser)
 router.get('/get-by-id/:id', Auth, userController.getUserById)
+router.put('/update/:id', Auth, hasRole([GENERAL_ADMIN]), userController.updateUser)
 router.put('/update-password', limiterRequest({ maxRequests: 3, time: '1m' }), Auth, userController.updatePassword)
-router.put('/update-info/:id', Auth, userController.updateUser)
+router.put('/change-status/:id', Auth, hasRole([GENERAL_ADMIN]), userController.changeStatusUser)
 router.post('/create', Auth, hasRole([GENERAL_ADMIN]), userController.createUser)
 router.delete('/delete/:id', Auth, hasRole([GENERAL_ADMIN]), userController.deleteUser)
+router.get('/report/pdf', Auth, hasRole([GENERAL_ADMIN]), userController.generatePdfReport)
 
 export default router

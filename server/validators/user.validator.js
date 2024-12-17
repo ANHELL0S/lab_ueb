@@ -16,6 +16,10 @@ const user_schema = z.object({
 		.length(10, { message: 'La cédula debe tener 10 caracteres.' })
 		.refine(value => isValidCI(value), 'La cédula no es válida')
 		.optional(),
+	code: z
+		.string()
+		.min(3, 'El código debe tener al menos 3 caracteres')
+		.max(255, 'El código debe tener maximo 255 caracteres'),
 	active: z.boolean().optional(),
 })
 

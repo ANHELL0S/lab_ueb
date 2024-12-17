@@ -1,7 +1,9 @@
 import bcrypt from 'bcrypt'
-import { Op } from 'sequelize'
+import moment from 'moment-timezone'
+import { Op, Sequelize } from 'sequelize'
 import { db_main } from '../config/db.config.js'
 import { logEvent } from '../helpers/log.helper.js'
+import { generatePdfTable } from '../libs/pdf_kit.lib.js'
 import { hashPassword } from '../helpers/bcrypt.helper.js'
 import { GenericCrudModel } from '../models/crud.model.js'
 import { user_schema } from '../validators/user.validator.js'
@@ -12,9 +14,10 @@ import { user_password_schema } from '../validators/user.validator.js'
 import {
 	rol_Schema,
 	user_Schema,
-	laboratory_Schema,
 	user_roles_Schema,
 	user_role_main_Schema,
+	laboratory_analyst_Schema,
+	system_config_Schema,
 } from '../schema/schemes.js'
 import { KEY_REDIS_USER, TIME_KEY_VALID } from '../const/redis_keys.const.js'
 import { PAGINATION_LIMIT, PAGINATION_PAGE } from '../const/pagination.const.js'
@@ -22,9 +25,9 @@ import { PAGINATION_LIMIT, PAGINATION_PAGE } from '../const/pagination.const.js'
 const userController = {
 	async getAllUsers(req, res) {
 		const redisClient = createRedisClient()
-		const { page = PAGINATION_PAGE, limit = PAGINATION_LIMIT, full_name = '', identification_card = '' } = req.query
+		const { page = PAGINATION_PAGE, limit = PAGINATION_LIMIT, search = '' } = req.query
 		const offset = (page - 1) * limit
-		const cacheKey = `cache:${KEY_REDIS_USER}:page:${page}:limit:${limit}:full_name:${full_name}:identification_card:${identification_card}`
+		const cacheKey = `cache:${KEY_REDIS_USER}:page:${page}:limit:${limit}:search:${search}`
 
 		try {
 			const cachedData = await redisClient.get(cacheKey)
@@ -33,7 +36,17 @@ const userController = {
 				return sendResponse(res, 200, 'Usuarios obtenidos exitosamente.', parsedData)
 			}
 
-			const { count, rows } = await user_Schema.findAndCountAll({
+			const whereCondition = search
+				? Sequelize.literal(
+						`concat("full_name", "identification_card", "email") ILIKE '%${search}%' AND id_user != '${req.user.id}'`
+				  )
+				: { id_user: { [Sequelize.Op.ne]: req.user.id } }
+
+			const countQuery = await user_Schema.count({
+				where: whereCondition,
+			})
+
+			const { rows } = await user_Schema.findAndCountAll({
 				attributes: { exclude: ['password'] },
 				include: [
 					{
@@ -53,22 +66,19 @@ const userController = {
 						],
 					},
 				],
-				where: {
-					...(full_name && { full_name: { [Op.iLike]: `%${full_name}%` } }),
-					...(identification_card && { identification_card: { [Op.iLike]: `%${identification_card}%` } }),
-				},
+				where: whereCondition,
 				limit: limit,
 				offset: offset,
 				subQuery: false,
-				distinct: true, //FIXME: Esto asegura que los reactivos no se cuenten más de una vez
+				distinct: true,
 				order: [['createdAt', 'DESC']],
 			})
 
-			if (rows.length === 0) return sendResponse(res, 404, 'No se encontraron usuarios.')
+			if (rows.length === 0 || rows.length === null) return sendResponse(res, 200, 'No se encontraron usuarios.')
 
 			const responseData = {
-				totalRecords: count,
-				totalPages: Math.ceil(count / limit),
+				totalRecords: countQuery,
+				totalPages: countQuery > 0 ? Math.ceil(countQuery / limit) : 1,
 				currentPage: parseInt(page, 10),
 				recordsPerPage: parseInt(limit, 10),
 				users: rows,
@@ -177,21 +187,15 @@ const userController = {
 	async updateUser(req, res) {
 		try {
 			const parsedData = user_schema.safeParse(req.body)
-			if (!parsedData.success) {
-				return sendResponse(res, 400, parsedData.error.errors[0].message)
-			}
+			if (!parsedData.success) return sendResponse(res, 400, parsedData.error.errors[0].message)
 
 			const { user } = req
 			const { id } = req.params
-			const { id_rol_fk, email, phone, identification_card } = req.body
+			const { email, phone, identification_card } = req.body
 
 			const user_found = await user_Schema.findByPk(id)
 			if (!user_found) return sendResponse(res, 404, 'Usuario no encontrado')
 
-			const role_exis = await rol_Schema.findByPk(id_rol_fk)
-			if (!role_exis) return sendResponse(res, 404, 'Rol no encontrado')
-
-			// Check for unique email, phone, and identification card
 			const checkDuplicate = async (field, value, errorMessage) => {
 				if (value !== user_found[field]) {
 					const existingClient = await user_Schema.findOne({
@@ -204,7 +208,6 @@ const userController = {
 				}
 			}
 
-			// Validate unique fields (email, phone, identification_card)
 			await checkDuplicate('email', email, 'Ya existe un usuario con este correo.')
 			await checkDuplicate('phone', phone, 'Ya existe un usuario con este teléfono.')
 			await checkDuplicate(
@@ -213,10 +216,8 @@ const userController = {
 				'Ya existe un usuario con este número de cédula.'
 			)
 
-			// Prepare user data for update
 			const userData = { ...req.body }
 
-			// Update the user record using a generic CRUD model
 			await GenericCrudModel.updateRecord({
 				keyRedis: KEY_REDIS_USER,
 				model: user_Schema,
@@ -231,7 +232,7 @@ const userController = {
 				messageError: 'Error al actualizar el usuario.',
 			})
 		} catch (error) {
-			return sendResponse(res, 500, 'Error inesperado al actualizar el usuario.')
+			return sendResponse(res, 500)
 		}
 	},
 
@@ -296,28 +297,132 @@ const userController = {
 		}
 	},
 
+	async changeStatusUser(req, res) {
+		try {
+			const user_found = await user_Schema.findByPk(req.params.id)
+			if (!user_found) return sendResponse(res, 404, 'Usuario no encontrado.')
+
+			const userData = {
+				active: !user_found.active,
+			}
+
+			await GenericCrudModel.updateRecord({
+				keyRedis: KEY_REDIS_USER,
+				model: user_Schema,
+				data: userData,
+				id_params: req.params.id,
+				user_id: req.user.id,
+				transaction_db_name: db_main,
+				req,
+				res,
+				messageSuccess: 'Cambio de estado actualizado exitosamente.',
+				messageNotFound: 'Usuario no encontrado.',
+				messageError: 'Error al cambiar el estado del usuario.',
+			})
+		} catch (error) {
+			console.log(error)
+			sendResponse(res, 500)
+		}
+	},
+
 	async deleteUser(req, res) {
-		const { user } = req
-		const { id } = req.params
+		try {
+			const userfound = await user_Schema.findByPk(req.params.id)
+			if (!userfound) return sendResponse(res, 404, 'El usuario no fue encontrado.')
 
-		const userfound = await user_Schema.findByPk(id)
-		if (!userfound) return sendResponse(res, 404, 'Usuario no encontrado.')
+			const userIsLab = await laboratory_analyst_Schema.findOne({ where: { id_analyst_fk: userfound.id_user } })
+			if (userIsLab)
+				return sendResponse(res, 400, 'No se puede eliminar este usuario porque está asignado a un laboratorio.')
 
-		const userIsLab = await laboratory_Schema.findOne({ where: { id_analyst_fk: userfound.id_user } })
-		if (userIsLab) return sendResponse(res, 400, 'El usuario esta a cargo de un laboratorio.')
+			await GenericCrudModel.deleteRecord({
+				keyRedis: KEY_REDIS_USER,
+				model: user_Schema,
+				id_params: req.params.id,
+				user_id: req.user.id,
+				transaction_db_name: db_main,
+				req,
+				res,
+				messageSuccess: 'Usuario eliminado exitosamente.',
+				messageNotFound: 'Usuario no encontrado.',
+				messageError: 'Hubo un error al intentar eliminar el usuario.',
+			})
+		} catch (error) {
+			sendResponse(res, 500)
+		}
+	},
 
-		await GenericCrudModel.deleteRecord({
-			keyRedis: KEY_REDIS_USER,
-			model: user_Schema,
-			id_params: id,
-			user_id: user.id,
-			transaction_db_name: db_main,
-			req,
-			res,
-			messageSuccess: 'Usuario eliminado exitosamente.',
-			messageNotFound: 'Usuario no encontrado.',
-			messageError: 'Error al eliminar el usuario.',
-		})
+	async generatePdfReport(req, res) {
+		try {
+			const { startDate, endDate, timezone = 'America/Guayaquil' } = req.query
+
+			const now = moment.tz(timezone)
+			const startUTC = startDate
+				? moment.tz(startDate, 'YYYY-MM-DD', timezone).startOf('day').utc().toDate()
+				: now.clone().startOf('month').utc().toDate()
+			const endUTC = endDate
+				? moment.tz(endDate, 'YYYY-MM-DD', timezone).endOf('day').utc().toDate()
+				: now.clone().endOf('month').utc().toDate()
+
+			const usersFound = await user_Schema.findAll({
+				where: {
+					createdAt: {
+						[Op.gte]: startUTC,
+						[Op.lte]: endUTC,
+					},
+				},
+				order: [['createdAt', 'ASC']],
+			})
+
+			if (!usersFound.length) return sendResponse(res, 404, 'No se encontraron usuarios para generar el reporte.')
+
+			const title_rows = ['Nombres', 'Email', 'Teléfono', 'Cédula', 'Código', 'Estado']
+			const rows = usersFound.map(item => [
+				item?.full_name || '',
+				item?.email || '',
+				item?.phone || '',
+				item?.identification_card || '',
+				item?.code || '',
+				item?.active ? 'Habilitado' : 'Deshabilitado',
+			])
+
+			const totalRows = usersFound.length
+
+			const infoU = await system_config_Schema.findOne()
+			const institutionData = {
+				name: infoU.institution_name,
+				address: infoU.address,
+				contact: `${infoU.contact_phone} | ${infoU.contact_email}`,
+			}
+
+			await logEvent('info', 'Se generó un reporte PDF de usuarios.', null, req.user.id, req)
+
+			const formatDate = date => (date ? moment(date).tz(timezone).format('DD-MM-YYYY') : 'No especificado')
+
+			const pdfFilename = `Reporte_Usuarios_${moment().tz(timezone).format('YYYY-MM-DD_HH-mm')}.pdf`
+			await generatePdfTable(
+				{
+					institutionData,
+					title: 'Reporte de usuarios.',
+					header: {
+						dateRange: `Fecha de reporte: ${formatDate(startUTC)} - ${formatDate(endUTC)}`,
+						totalRows: `Total de registros: ${totalRows}`,
+					},
+					title_rows,
+					rows,
+					filename: pdfFilename,
+				},
+				res
+			)
+		} catch (error) {
+			await logEvent(
+				'error',
+				'Error al generar el reporte PDF de usuarios.',
+				{ error: error.message, stack: error.stack },
+				req.user.id,
+				req
+			)
+			return sendResponse(res, 500)
+		}
 	},
 }
 
